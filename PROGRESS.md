@@ -570,6 +570,17 @@ Bu rehber, kullanıcı hesapları olmadan çalışabilen, çoklu dil desteğine 
 - ✅ Önizleme modu için sınırlı içerik gösterimi ayarlandı
 - ✅ Takvim ve program detayları arasında geçiş yapısı uygulandı
 
+### Ödeme Sayfası ve Satın Alma İşlemi
+- [x] Checkout sayfası oluşturuldu (`app/checkout/[programId]/page.tsx`)
+- [x] Ödeme formu bileşeni oluşturuldu (`components/checkout/checkout-form.tsx`)
+- [x] Ödeme seçenekleri ve fiyat bilgisi bileşeni oluşturuldu (`components/checkout/payment-options.tsx`)
+- [x] Başarılı ödeme sayfası oluşturuldu (`app/success/page.tsx`)
+- [x] Form doğrulama işlemleri tamamlandı
+- [x] Koşullar ve şartlar checkbox'u sorunu çözüldü
+- [x] Next.js tip hatası düzeltildi (params objesinin Promise olarak işlenmesi sorunu)
+- [x] Next.js gelecek sürümlerinde uyumlu olacak tip tanımlamaları eklendi
+- [x] Next.js route params ve searchParams Promise-based yapısına geçiş tamamlandı
+
 ### Genel Geliştirmeler
 - ✅ UI bileşenleri (shadcn) entegrasyonu tamamlandı
 - ✅ Responsive tasarım uygulandı
@@ -577,9 +588,8 @@ Bu rehber, kullanıcı hesapları olmadan çalışabilen, çoklu dil desteğine 
 - ✅ Modern ve temiz bir arayüz tasarımı uygulandı
 
 ### Sonraki Adımlar
-- Ödeme sayfası oluşturulması
-- Satın alma işlemi tamamlandıktan sonraki akış
 - E-posta gönderim entegrasyonu
 - PDF oluşturma ve indirme fonksiyonları
+- Takvim formatında (.ics) dışa aktarma özelliği
 - Farklı ülkeler ve sınavlar için içerik genişletmesi
 - Genel performans optimizasyonu

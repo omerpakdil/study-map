@@ -1,17 +1,39 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ProgramPreview } from "@/components/program/program-preview";
 import { motion } from "framer-motion";
 
-export default function ProgramPreviewPage({ params }: { params: { id: string } }) {
+// ProgramPreviewPage bileşeni için type tanımlaması
+type ProgramPreviewPageProps = {
+  params: Promise<{
+    id: string;
+  }>;
+};
+
+export default function ProgramPreviewPage({ params }: ProgramPreviewPageProps) {
   const router = useRouter();
-  const programId = params.id;
+  const [programId, setProgramId] = useState<string>("");
+  
+  // params Promise'ini çözmek için useEffect kullanıyoruz
+  useEffect(() => {
+    const resolveParams = async () => {
+      const resolvedParams = await params;
+      setProgramId(resolvedParams.id);
+    };
+    resolveParams();
+  }, [params]);
   
   const handlePurchase = () => {
-    router.push(`/checkout/${programId}`);
+    if (programId) {
+      router.push(`/checkout/${programId}`);
+    }
   };
+  
+  if (!programId) {
+    return <div className="w-full flex justify-center py-10">Yükleniyor...</div>;
+  }
   
   return (
     <div className="w-full flex justify-center py-10">
