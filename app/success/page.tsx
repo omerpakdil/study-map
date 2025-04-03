@@ -6,7 +6,11 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, Download, Mail, ArrowRight, Share, FileDown, Clock, Loader2 } from "lucide-react";
+import { CheckCircle, Download, Mail, ArrowRight, Share, FileDown, Clock, Loader2, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
+import dynamic from "next/dynamic";
+import { Input } from "@/components/ui/input";
+import { Share2, Calendar, RefreshCw } from "lucide-react";
 
 export default function SuccessPage() {
   const router = useRouter();
@@ -14,6 +18,7 @@ export default function SuccessPage() {
   const [programId, setProgramId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [countdown, setCountdown] = useState(5);
+  const [emailResending, setEmailResending] = useState(false);
   
   // searchParams'dan programId'yi güvenli bir şekilde al
   useEffect(() => {
@@ -61,10 +66,97 @@ export default function SuccessPage() {
     emailAddress: "kullanici@example.com",
   };
   
+  // E-postayı yeniden gönderme
+  const handleResendEmail = async () => {
+    if (!programId) return;
+    
+    setEmailResending(true);
+    
+    try {
+      const response = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'purchase',
+          email: programData.emailAddress,
+          programName: programData.name,
+          programId,
+          pdfUrl: `/api/downloads/${programId}/pdf`,
+          icsUrl: `/api/downloads/${programId}/ics`,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success("E-posta başarıyla yeniden gönderildi!");
+        
+        // Test ortamında e-posta ön izleme URL'sini konsola yazdır
+        if (result.previewUrl) {
+          console.log("E-posta ön izleme URL'si:", result.previewUrl);
+        }
+      } else {
+        toast.error("E-posta gönderimi başarısız oldu. Lütfen daha sonra tekrar deneyin.");
+        console.error("E-posta gönderimi başarısız:", result.message);
+      }
+    } catch (error) {
+      toast.error("E-posta gönderiminde bir hata oluştu.");
+      console.error("E-posta gönderimi sırasında hata:", error);
+    } finally {
+      setEmailResending(false);
+    }
+  };
+  
   // PDF indirme fonksiyonu
-  const handleDownload = () => {
-    // Gerçek uygulamada API'den PDF'i getirir
-    alert("PDF indirme işlemi başlatılıyor...");
+  const handleDownload = async () => {
+    if (!programId) return;
+    
+    try {
+      toast.info('PDF hazırlanıyor, lütfen bekleyin...');
+      
+      // PDF URL'si
+      const pdfUrl = `/api/downloads/${programId}/pdf`;
+      
+      // PDF dosyasını indir
+      const link = document.createElement('a');
+      link.href = pdfUrl;
+      link.setAttribute('download', `${programData.name}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('PDF indiriliyor...');
+    } catch (error) {
+      console.error('PDF indirme hatası:', error);
+      toast.error('PDF indirilemedi. Lütfen tekrar deneyin.');
+    }
+  };
+  
+  // Takvim indirme fonksiyonu
+  const handleCalendarDownload = async () => {
+    if (!programId) return;
+    
+    try {
+      toast.info('Takvim hazırlanıyor, lütfen bekleyin...');
+      
+      // ICS formatındaki dosyayı almak için API URL'sini oluştur
+      const icsApiUrl = `/api/downloads/${programId}/ics`;
+      
+      // Takvim dosyasını indirme işlemi için gizli bir a elementi oluştur
+      const link = document.createElement('a');
+      link.href = icsApiUrl;
+      link.download = `Program_${programId}.ics`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('Takvim dosyası indiriliyor...');
+    } catch (error) {
+      console.error('Takvim oluşturma hatası:', error);
+      toast.error('Takvim oluşturulurken bir hata oluştu');
+    }
   };
   
   // E-posta paylaşım fonksiyonu
@@ -110,10 +202,14 @@ export default function SuccessPage() {
             adresine gönderildi!
           </p>
           
-          <div className="flex gap-4 mt-6">
+          <div className="flex flex-wrap gap-4 mt-6 justify-center">
             <Button onClick={handleDownload} className="gap-2">
               <Download className="w-4 h-4" />
               <span>PDF İndir</span>
+            </Button>
+            <Button onClick={handleCalendarDownload} className="gap-2">
+              <Clock className="w-4 h-4" />
+              <span>Takvim İndir</span>
             </Button>
             <Button onClick={handleEmailShare} variant="outline" className="gap-2">
               <Share className="w-4 h-4" />
@@ -144,9 +240,32 @@ export default function SuccessPage() {
                   E-postanızı {countdown > 0 ? `${countdown} saniye içinde` : "şimdi"} açmak için aşağıdaki butona tıklayın.
                 </p>
               </CardContent>
-              <CardFooter>
-                <Button variant="outline" className="w-full" onClick={() => window.open(`https://mail.google.com`, "_blank")}>
+              <CardFooter className="flex-col space-y-2">
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  onClick={() => window.open(`https://mail.google.com`, "_blank")}
+                >
                   E-postanı Aç
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="w-full gap-1" 
+                  onClick={handleResendEmail}
+                  disabled={emailResending}
+                >
+                  {emailResending ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>Gönderiliyor...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="h-3 w-3" />
+                      <span>E-postayı Yeniden Gönder</span>
+                    </>
+                  )}
                 </Button>
               </CardFooter>
             </Card>
@@ -184,7 +303,17 @@ export default function SuccessPage() {
                     </div>
                     <span>Takvim Formatı (.ics)</span>
                   </div>
-                  <Button size="sm" variant="ghost" onClick={() => alert("Takvim dosyası indiriliyor...")}>İndir</Button>
+                  <Button size="sm" variant="ghost" onClick={handleCalendarDownload}>İndir</Button>
+                </div>
+                <div className="mt-4 bg-amber-50 border border-amber-200 rounded-md p-3 text-amber-800 text-sm flex gap-2">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium">Önemli Not</p>
+                    <p>
+                      Program dosyalarınız her zaman e-postanızda mevcut olacaktır. 
+                      İndirme sorunu yaşarsanız e-postanızı kontrol edin veya yeniden gönder butonunu kullanın.
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>

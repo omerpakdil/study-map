@@ -19,6 +19,7 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
   const [programId, setProgramId] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [emailStatus, setEmailStatus] = useState<string | null>(null);
   
   // params Promise'ini çözmek için useEffect kullanıyoruz
   useEffect(() => {
@@ -89,6 +90,50 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
       }, 1000);
     });
   };
+
+  // Satın alma sonrası e-posta gönderimi
+  const sendPurchaseEmail = async (email: string) => {
+    try {
+      setEmailStatus("sending");
+      
+      // PDF ve ICS dosyaları için API yolları
+      const pdfUrl = `/api/downloads/${programId}/pdf`;
+      const icsUrl = `/api/downloads/${programId}/ics`;
+      
+      const response = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'purchase',
+          email,
+          programName: programData.name,
+          programId,
+          pdfUrl,
+          icsUrl,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setEmailStatus("success");
+        console.log("E-posta başarıyla gönderildi:", result);
+        
+        // Test ortamında e-posta ön izleme URL'sini konsola yazdır
+        if (result.previewUrl) {
+          console.log("E-posta ön izleme URL'si:", result.previewUrl);
+        }
+      } else {
+        setEmailStatus("error");
+        console.error("E-posta gönderimi başarısız:", result.message);
+      }
+    } catch (error) {
+      setEmailStatus("error");
+      console.error("E-posta gönderimi sırasında hata:", error);
+    }
+  };
   
   // Ödeme işlemi
   const handleCheckoutSubmit = async (data: any) => {
@@ -96,7 +141,10 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
     
     try {
       // Normalde burada ödeme için API isteği yapılır
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Ödeme başarılıysa e-posta gönder
+      await sendPurchaseEmail(data.email);
       
       // Başarılı ödeme sonrası başarı sayfasına yönlendir
       router.push(`/success?id=${programId}`);
@@ -130,6 +178,12 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
           <p className="text-muted-foreground max-w-md">
             Lütfen sayfadan ayrılmayın. Ödemeniz işleniyor ve kısa süre içinde tamamlanacak.
           </p>
+          
+          {emailStatus === "sending" && (
+            <p className="text-sm text-primary">
+              Programınız hazırlanıyor ve e-posta adresinize gönderiliyor...
+            </p>
+          )}
         </div>
       </div>
     );
