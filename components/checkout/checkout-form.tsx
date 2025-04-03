@@ -14,17 +14,23 @@ import { Loader2, CreditCard, Building, AlertCircle } from "lucide-react";
 
 // Form şeması
 const checkoutFormSchema = z.object({
+  firstName: z.string().min(2, { message: "İsim en az 2 karakter olmalıdır" }),
+  lastName: z.string().min(2, { message: "Soyisim en az 2 karakter olmalıdır" }),
   email: z.string().email({ message: "Geçerli bir e-posta adresi giriniz" }),
-  fullName: z.string().min(3, { message: "İsim en az 3 karakter olmalıdır" }),
+  phone: z.string().min(10, { message: "Geçerli bir telefon numarası giriniz" }),
   cardNumber: z.string().regex(/^[0-9]{16}$/, { message: "Geçerli bir kart numarası giriniz" }),
   expiry: z.string().regex(/^(0[1-9]|1[0-2])\/([0-9]{2})$/, { message: "AA/YY formatında giriniz" }),
   cvc: z.string().regex(/^[0-9]{3,4}$/, { message: "Geçerli bir CVC giriniz" }),
   address: z.string().min(5, { message: "Adres en az 5 karakter olmalıdır" }),
   city: z.string().min(2, { message: "Geçerli bir şehir giriniz" }),
   postalCode: z.string().min(5, { message: "Geçerli bir posta kodu giriniz" }),
+  countryCode: z.string(),
   termsAccepted: z.boolean().refine(val => val === true, {
     message: "Koşulları kabul etmelisiniz",
   }),
+  identityNumber: z.string().regex(/^[0-9]{11}$/, {
+    message: "TC Kimlik numarası 11 haneli olmalı ve sadece rakam içermelidir",
+  }).min(1, "TC Kimlik numarası zorunludur"),
 });
 
 type CheckoutFormValues = z.infer<typeof checkoutFormSchema>;
@@ -58,15 +64,19 @@ export function CheckoutForm({
   } = useForm<CheckoutFormValues>({
     resolver: zodResolver(checkoutFormSchema),
     defaultValues: {
+      firstName: "",
+      lastName: "",
       email: "",
-      fullName: "",
+      phone: "",
       cardNumber: "",
       expiry: "",
       cvc: "",
       address: "",
       city: "",
       postalCode: "",
+      countryCode: "TR",
       termsAccepted: false,
+      identityNumber: "",
     },
   });
 
@@ -104,6 +114,52 @@ export function CheckoutForm({
         <form onSubmit={hookFormSubmit(handleFormSubmit)} className="space-y-6">
           <div className="space-y-4">
             <div>
+              <Label htmlFor="firstName">İsim</Label>
+              <Input
+                id="firstName"
+                placeholder="İsim"
+                {...register("firstName")}
+                className={`mt-1 ${errors.firstName ? "border-destructive" : ""}`}
+              />
+              {errors.firstName && (
+                <p className="text-sm text-destructive mt-1">{errors.firstName.message}</p>
+              )}
+            </div>
+            
+            <div>
+              <Label htmlFor="lastName">Soyisim</Label>
+              <Input
+                id="lastName"
+                placeholder="Soyisim"
+                {...register("lastName")}
+                className={`mt-1 ${errors.lastName ? "border-destructive" : ""}`}
+              />
+              {errors.lastName && (
+                <p className="text-sm text-destructive mt-1">{errors.lastName.message}</p>
+              )}
+            </div>
+            
+            <div>
+              <Label htmlFor="identityNumber">TC Kimlik Numarası</Label>
+              <Input
+                id="identityNumber"
+                placeholder="XXXXXXXXXXX (11 haneli)"
+                maxLength={11}
+                {...register("identityNumber", {
+                  pattern: {
+                    value: /^[0-9]{11}$/,
+                    message: "TC Kimlik numarası 11 haneli olmalı ve sadece rakam içermelidir",
+                  },
+                  required: "TC Kimlik numarası zorunludur",
+                })}
+                className={`mt-1 ${errors.identityNumber ? "border-destructive" : ""}`}
+              />
+              {errors.identityNumber && (
+                <p className="text-sm text-destructive mt-1">{errors.identityNumber.message}</p>
+              )}
+            </div>
+            
+            <div>
               <Label htmlFor="email">E-posta Adresi</Label>
               <Input
                 id="email"
@@ -118,15 +174,15 @@ export function CheckoutForm({
             </div>
             
             <div>
-              <Label htmlFor="fullName">Ad Soyad</Label>
+              <Label htmlFor="phone">Telefon Numarası</Label>
               <Input
-                id="fullName"
-                placeholder="Ad Soyad"
-                {...register("fullName")}
-                className={`mt-1 ${errors.fullName ? "border-destructive" : ""}`}
+                id="phone"
+                placeholder="555-1234-5678"
+                {...register("phone")}
+                className={`mt-1 ${errors.phone ? "border-destructive" : ""}`}
               />
-              {errors.fullName && (
-                <p className="text-sm text-destructive mt-1">{errors.fullName.message}</p>
+              {errors.phone && (
+                <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>
               )}
             </div>
           </div>

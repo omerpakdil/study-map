@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { CheckoutForm } from "@/components/checkout/checkout-form";
 import { PaymentOptions } from "@/components/checkout/payment-options";
+import { Button } from "@/components/ui/button";
 
 // Next.js dinamik rotalı sayfaların prop tipini tanımlayalım
 type CheckoutPageProps = {
@@ -20,6 +21,9 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [emailStatus, setEmailStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [paymentData, setPaymentData] = useState<any>(null);
   
   // params Promise'ini çözmek için useEffect kullanıyoruz
   useEffect(() => {
@@ -137,22 +141,90 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
   
   // Ödeme işlemi
   const handleCheckoutSubmit = async (data: any) => {
+    setError("");
     setIsProcessing(true);
     
     try {
-      // Normalde burada ödeme için API isteği yapılır
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Form verileri
+      console.log("Form verileri:", data);
       
-      // Ödeme başarılıysa e-posta gönder
-      await sendPurchaseEmail(data.email);
+      // Ülke koduna göre hangi ödeme sağlayıcısını kullanacağımızı belirle
+      // Türkiye için İyzico, diğer ülkeler için Stripe
+      const countryCode = data.countryCode || "TR";
       
-      // Başarılı ödeme sonrası başarı sayfasına yönlendir
-      router.push(`/success?id=${programId}`);
-    } catch (error) {
+      const response = await fetch('/api/payment/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          countryCode: countryCode,
+          programId: programId,
+          programName: programData.name,
+          price: programData.discountedPrice || programData.price,
+          currency: programData.currency,
+          customerInfo: {
+            id: `user_${Date.now()}`,
+            firstName: data.firstName,
+            lastName: data.lastName,
+            email: data.email,
+            phone: data.phone || "+905555555555", // Telefon formatı: +90XXXXXXXXXX
+            address: data.address,
+            city: data.city,
+            postalCode: data.postalCode || "34000",
+            country: countryCode === "TR" ? "Turkey" : data.country || "Turkey",
+            identityNumber: data.identityNumber // TC Kimlik No
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Ödeme işlemi başlatılamadı");
+      }
+      
+      const result = await response.json();
+      
+      // Sonuçları sakla
+      setPaymentData(result);
+      
+      if (result.provider === 'iyzico' && result.checkoutFormContent) {
+        // İyzico - ödeme formunu göster
+        setFormSubmitted(true);
+        // İşlemi tamamla - iframe üzerinden devam edecek
+        setIsProcessing(false);
+        
+      } else if (result.provider === 'stripe') {
+        // Stripe - Ödeme sayfasına yönlendir
+        // Not: Gerçek uygulamada, Stripe.js ile ödeme form entegrasyonu yapılmalıdır
+        // Bu demo için basitleştirilmiş sürüm kullanıyoruz
+        
+        // Ödeme başarılıysa e-posta gönder
+        await sendPurchaseEmail(data.email);
+        
+        // Başarılı ödeme sonrası başarı sayfasına yönlendir
+        router.push(`/success?id=${programId}`);
+      }
+      
+    } catch (error: any) {
       console.error("Ödeme hatası:", error);
       setIsProcessing(false);
-      throw error;
+      setError(error.message || "Ödeme işlemi sırasında beklenmeyen bir hata oluştu.");
     }
+  };
+  
+  // İyzico iframe bileşeni
+  const IyzicoFormComponent = ({ formContent }: { formContent: string }) => {
+    return (
+      <motion.div 
+        className="w-full max-w-3xl mx-auto mt-6 rounded-lg overflow-hidden"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div dangerouslySetInnerHTML={{ __html: formContent }} />
+      </motion.div>
+    );
   };
   
   if (isLoading) {
@@ -191,52 +263,66 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
   
   return (
     <div className="w-full flex justify-center py-10">
-      <div className="container max-w-6xl px-4 md:px-6">
-        <motion.div 
-          className="text-center mb-10"
+      <div className="container max-w-5xl px-4 md:px-6">
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
+          className="mb-8 text-center"
         >
           <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-primary mb-4">
             Ödeme
           </h1>
           <p className="text-muted-foreground text-lg max-w-[700px] mx-auto">
-            Programınızı satın almak için lütfen aşağıdaki formu doldurunuz.
+            Çalışma programınızı satın almak için aşağıdaki formu doldurun.
           </p>
         </motion.div>
+
+        {isLoading ? (
+          <div className="flex justify-center items-center h-[400px]">
+            <div className="flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              <p className="text-muted-foreground">Program bilgileri yükleniyor...</p>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="text-center p-8 border rounded-lg bg-destructive/10 text-destructive">
+            <p className="mb-4">{error}</p>
+            <Button variant="outline" onClick={() => router.push("/")}>
+              Ana Sayfaya Dön
+            </Button>
+          </div>
+        ) : formSubmitted && paymentData?.provider === 'iyzico' && paymentData?.checkoutFormContent ? (
+          // İyzico formunu göster
+          <IyzicoFormComponent formContent={paymentData.checkoutFormContent} />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="md:col-span-2">
+              <CheckoutForm
+                programId={programId}
+                price={programData.price}
+                currency={programData.currency}
+                discountedPrice={programData.discountedPrice}
+                onSubmit={handleCheckoutSubmit}
+              />
+            </div>
+            <div className="md:col-span-1">
+              <PaymentOptions
+                programName={programData.name}
+                price={programData.price}
+                currency={programData.currency}
+                features={programData.features}
+                onApplyDiscount={handleApplyDiscount}
+              />
+            </div>
+          </div>
+        )}
         
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <motion.div 
-            className="lg:col-span-2 order-2 lg:order-1"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            <CheckoutForm 
-              programId={programId}
-              price={programData.price}
-              currency={programData.currency}
-              discountedPrice={programData.discountedPrice}
-              onSubmit={handleCheckoutSubmit}
-            />
-          </motion.div>
-          
-          <motion.div 
-            className="lg:col-span-1 order-1 lg:order-2"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-          >
-            <PaymentOptions 
-              programName={programData.name}
-              price={programData.price}
-              currency={programData.currency}
-              features={programData.features}
-              onApplyDiscount={handleApplyDiscount}
-            />
-          </motion.div>
-        </div>
+        {error && (
+          <div className="mt-4 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+            <p>{error}</p>
+          </div>
+        )}
       </div>
     </div>
   );
