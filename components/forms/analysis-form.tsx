@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,13 +14,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { ExamType, examSubjects } from "@/lib/program-generator";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { DragHandleDots2Icon, PlusIcon, MinusIcon } from "@radix-ui/react-icons";
+import clsx from "clsx";
+import { tr } from "date-fns/locale";
 
 // Form şeması
 const analysisFormSchema = z.object({
   // Kişisel bilgiler
   name: z.string().optional(),
   email: z.string().email({ message: "Geçerli bir e-posta adresi giriniz" }),
-  country: z.string().min(1, { message: "Lütfen bir ülke seçin" }),
   examType: z.string().min(1, { message: "Lütfen bir sınav türü seçin" }),
   examDate: z.string().min(1, { message: "Lütfen sınav tarihini seçin" }),
   
@@ -33,156 +41,310 @@ const analysisFormSchema = z.object({
   breakFrequency: z.number().min(10).max(120),
   breakDuration: z.number().min(5).max(30),
   
-  // Konu analizi
-  subjectAnalysis: z.record(z.object({
-    level: z.enum(["strong", "medium", "weak"]),
-    difficulty: z.number().min(1).max(5),
-    priority: z.number().min(1).max(5),
-    notes: z.string().optional(),
-  })),
+  // Konu analizi - yeni model
+  topicRatings: z.record(z.record(z.number().min(1).max(5))),
+  
+  // Konu öncelik sıralaması
+  subjectPriorities: z.array(z.string()).optional(),
   
   // Hedefler
   overallGoal: z.string().min(1, { message: "Lütfen genel hedefinizi belirtin" }),
   targetScore: z.number().optional(),
   targetRanking: z.number().optional(),
-  motivationFactors: z.array(z.string()),
+  motivationFactors: z.array(z.string()).default([]),
 });
 
 type AnalysisFormValues = z.infer<typeof analysisFormSchema>;
 
 const defaultValues: Partial<AnalysisFormValues> = {
-  country: "TR",
   hoursPerDay: 4,
   availableDays: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
   preferredTime: "afternoon",
   concentrationSpan: 45,
   breakFrequency: 45,
   breakDuration: 10,
-  subjectAnalysis: {},
+  topicRatings: {},
+  subjectPriorities: [], // Varsayılan boş öncelik listesi
   motivationFactors: [],
 };
 
 // Ülkeler
 const countries = [
-  { code: "TR", name: "Türkiye" },
-  { code: "US", name: "Amerika Birleşik Devletleri" },
-  { code: "GB", name: "İngiltere" },
-  { code: "DE", name: "Almanya" },
-  { code: "FR", name: "Fransa" },
-  { code: "IT", name: "İtalya" },
-  { code: "ES", name: "İspanya" },
-  { code: "IN", name: "Hindistan" },
+  { code: "US", name: "Amerika Birleşik Devletleri" }
 ];
 
-// Sınav türleri (Ülkeye göre filtrelenir)
+// Sınav türleri - Sadece Amerika sınavları
 const examTypes = {
-  TR: [
-    { code: "YKS", name: "YKS (AYT, TYT)" },
-    { code: "LGS", name: "LGS" },
-    { code: "KPSS", name: "KPSS" },
-    { code: "ALES", name: "ALES" },
-    { code: "YDS", name: "YDS/YÖKDİL" },
-  ],
   US: [
     { code: "SAT", name: "SAT" },
     { code: "ACT", name: "ACT" },
-    { code: "GRE", name: "GRE" },
-    { code: "GMAT", name: "GMAT" },
-    { code: "MCAT", name: "MCAT" },
-  ],
-  GB: [
-    { code: "A_Levels", name: "A-Levels" },
-    { code: "GCSE", name: "GCSE" },
-    { code: "IELTS", name: "IELTS" },
-    { code: "Cambridge", name: "Cambridge Exams" },
-  ],
-  DE: [
-    { code: "Abitur", name: "Abitur" },
-    { code: "TestAS", name: "TestAS" },
-    { code: "DSH", name: "DSH" },
-    { code: "TestDaF", name: "TestDaF" },
-  ],
-  IN: [
-    { code: "JEE", name: "JEE (Main & Advanced)" },
-    { code: "NEET", name: "NEET" },
-    { code: "CAT", name: "CAT" },
-    { code: "GATE", name: "GATE" },
-  ],
+    { code: "GRE", name: "Graduate Record Examination (GRE)" },
+    { code: "GMAT", name: "Graduate Management Admission Test (GMAT)" },
+    { code: "MCAT", name: "Medical College Admission Test (MCAT)" },
+    { code: "PSAT", name: "Preliminary SAT (PSAT)" },
+    { code: "LSAT", name: "Law School Admission Test (LSAT)" },
+    { code: "TOEFL", name: "Test of English as a Foreign Language (TOEFL)" },
+    { code: "IELTS", name: "International English Language Testing System (IELTS)" },
+    { code: "AP", name: "Advanced Placement (AP) Sınavları" },
+    { code: "IB", name: "International Baccalaureate (IB) Sınavları" },
+  ]
 };
+
+// Subject icon helper function
+// Bu fonksiyon ders ismine göre uygun simge döndürür
+function getSubjectIcon(subject: string) {
+  // Türkçe ve İngilizce ders isimleri için eşleştirme
+  switch (subject.toLowerCase()) {
+    case "matematik":
+    case "math":
+    case "mathematics":
+    case "calculus":
+      return "M";
+    case "fizik":
+    case "physics":
+    case "fiziksel bilimler":
+      return "F";
+    case "kimya":
+    case "chemistry":
+      return "K";
+    case "biyoloji":
+    case "biology":
+    case "biyolojik":
+      return "B";
+    case "türkçe":
+    case "turkish":
+      return "T";
+    case "ingilizce":
+    case "english":
+    case "reading":
+    case "writing":
+    case "okuma":
+    case "yazma":
+    case "essay":
+    case "dinleme":
+    case "listening":
+    case "konuşma":
+    case "speaking":
+      return "E";
+    case "tarih":
+    case "history":
+    case "abd tarihi":
+      return "T";
+    case "coğrafya":
+    case "geography":
+      return "C";
+    case "fen bilimleri":
+    case "science":
+    case "fen":
+      return "F";
+    case "mantıksal akıl yürütme":
+    case "niceliksel akıl yürütme":
+    case "sözel akıl yürütme":
+    case "sözel bölüm":
+    case "niceliksel bölüm":
+    case "verbal reasoning":
+    case "quantitative reasoning":
+    case "analytical writing":
+    case "entegre akıl yürütme":
+    case "analitik yazma":
+    case "kritik analiz":
+    case "analytical":
+      return "A";
+    case "ekonomi":
+    case "economics":
+      return "E";
+    case "psikolojik ve sosyal temeller":
+    case "psychology":
+    case "sociology":
+      return "P";
+    default:
+      // İlk harfini büyük olarak döndür
+      return subject.charAt(0).toUpperCase();
+  }
+}
 
 export function AnalysisForm() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<string>("personal-info");
-  const [selectedCountry, setSelectedCountry] = useState<string>("TR");
+  const [selectedCountry] = useState<string>("US"); // Sabit olarak US
   const [selectedExamType, setSelectedExamType] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [subjects, setSubjects] = useState<string[]>([]);
 
-  const form = useForm<AnalysisFormValues>({
+  // Öncelikli konu sıralaması için state
+  const [prioritizedSubjects, setPrioritizedSubjects] = useState<string[]>([]);
+  const [draggedSubject, setDraggedSubject] = useState<string | null>(null);
+
+  const form = useForm({
+    // @ts-ignore - TypeScript errors with Zod schema inference
     resolver: zodResolver(analysisFormSchema),
     defaultValues,
     mode: "onChange",
   });
-
-  const handleCountryChange = (value: string) => {
-    setSelectedCountry(value);
-    form.setValue("country", value);
-    form.setValue("examType", ""); // Ülke değişince sınav tipi sıfırlanır
-    setSelectedExamType("");
-    setSubjects([]);
-  };
 
   const handleExamTypeChange = (value: string) => {
     setSelectedExamType(value);
     form.setValue("examType", value);
     
     // Sınav tipine göre konuları belirleme
-    let examSubjects: string[] = [];
+    let examSubjectsList: string[] = [];
     
-    if (value === "YKS") {
-      examSubjects = ["Matematik", "Fizik", "Kimya", "Biyoloji", "Türkçe", "Tarih", "Coğrafya", "Felsefe"];
-    } else if (value === "LGS") {
-      examSubjects = ["Matematik", "Fen Bilimleri", "Türkçe", "İnkılap Tarihi", "İngilizce", "Din Kültürü"];
-    } else if (value === "KPSS") {
-      examSubjects = ["Genel Kültür", "Genel Yetenek", "Eğitim Bilimleri", "Alan Bilgisi"];
-    } else if (value === "YDS") {
-      examSubjects = ["Kelime Bilgisi", "Dilbilgisi", "Okuma-Anlama", "Çeviri"];
-    } else if (value === "SAT") {
-      examSubjects = ["Reading", "Writing", "Math", "Essay"];
-    } else if (value === "GRE") {
-      examSubjects = ["Verbal Reasoning", "Quantitative Reasoning", "Analytical Writing"];
+    if (Object.values(ExamType).includes(value as ExamType)) {
+      // Eğer desteklenen bir sınav türüyse, kütüphaneden konuları al
+      const subjectData = examSubjects[value as ExamType];
+      examSubjectsList = subjectData.map(subject => subject.name);
+      
+      // Konuların değerlendirmelerini form state'e ekleme
+      const topicRatings: Record<string, Record<string, number>> = {};
+      
+      subjectData.forEach(subject => {
+        topicRatings[subject.name] = {};
+        // Her konu için varsayılan değerlendirme: 3 (orta)
+        subject.topics.forEach(topic => {
+          topicRatings[subject.name][topic] = 3;
+        });
+      });
+      
+      form.setValue("topicRatings", topicRatings);
     } else {
-      examSubjects = ["Konu 1", "Konu 2", "Konu 3", "Konu 4"];
+      // Desteklenmeyen bir sınav türü için örnek konular - Amerika sınavlarına göre güncellendi
+      if (value === "PSAT") {
+        examSubjectsList = ["Matematik", "Okuma ve Yazma"];
+      } else if (value === "SAT") {
+        examSubjectsList = ["Matematik", "Okuma ve Yazma", "Essay"];
+      } else if (value === "ACT") {
+        examSubjectsList = ["Matematik", "İngilizce", "Okuma", "Fen Bilimleri", "Essay"];
+      } else if (value === "GRE") {
+        examSubjectsList = ["Sözel Akıl Yürütme", "Niceliksel Akıl Yürütme", "Analitik Yazma"];
+      } else if (value === "GMAT") {
+        examSubjectsList = ["Niceliksel Bölüm", "Sözel Bölüm", "Entegre Akıl Yürütme", "Analitik Yazı"];
+      } else if (value === "MCAT") {
+        examSubjectsList = ["Biyolojik ve Biyokimyasal Temeller", "Fiziksel Bilimler", "Psikolojik ve Sosyal Temeller", "Kritik Analiz ve Akıl Yürütme"];
+      } else if (value === "LSAT") {
+        examSubjectsList = ["Mantıksal Akıl Yürütme", "Okuma Kavrama", "Yazma Bölümü"];
+      } else if (value === "TOEFL") {
+        examSubjectsList = ["Okuma", "Dinleme", "Konuşma", "Yazma"];
+      } else if (value === "IELTS") {
+        examSubjectsList = ["Dinleme", "Okuma", "Yazma", "Konuşma"];
+      } else if (value === "AP") {
+        examSubjectsList = ["Calculus AB/BC", "Fizik", "Biyoloji", "Kimya", "İngilizce Edebiyatı", "ABD Tarihi"];
+      } else if (value === "IB") {
+        examSubjectsList = ["Matematik", "Fizik", "Kimya", "Biyoloji", "İngilizce A", "Tarih", "Ekonomi"];
+      } else {
+        examSubjectsList = ["Konu 1", "Konu 2", "Konu 3", "Konu 4"];
+      }
+      
+      // Örnek konular için boş bir değerlendirme oluştur
+      const topicRatings: Record<string, Record<string, number>> = {};
+      examSubjectsList.forEach(subject => {
+        topicRatings[subject] = {
+          "Genel": 3  // Desteklenmeyen sınavlar için sadece genel değerlendirme
+        };
+      });
+      
+      form.setValue("topicRatings", topicRatings);
     }
     
-    setSubjects(examSubjects);
+    setSubjects(examSubjectsList);
+    // Konular değiştiğinde, öncelik listesini de güncelle
+    setPrioritizedSubjects(examSubjectsList);
+    form.setValue("subjectPriorities", examSubjectsList);
+  };
+
+  // Konu sürükleme başlangıcını işle
+  const handleDragStart = (subject: string) => {
+    setDraggedSubject(subject);
+  };
+
+  // Konu sürükleme bitişini işle
+  const handleDragEnd = () => {
+    setDraggedSubject(null);
+  };
+
+  // Sürüklenen konunun yeni konumunu hesapla
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedSubject === null) return;
     
-    // Konuları form state'e ekleme
-    const subjectAnalysis: Record<string, any> = {};
-    examSubjects.forEach(subject => {
-      subjectAnalysis[subject] = {
-        level: "medium",
-        difficulty: 3,
-        priority: 3,
-        notes: ""
-      };
-    });
+    const currentList = [...prioritizedSubjects];
+    const draggedIndex = currentList.indexOf(draggedSubject);
     
-    form.setValue("subjectAnalysis", subjectAnalysis);
+    if (draggedIndex === index) return;
+    
+    const newList = [...currentList];
+    newList.splice(draggedIndex, 1);
+    newList.splice(index, 0, draggedSubject);
+    
+    setPrioritizedSubjects(newList);
+    form.setValue("subjectPriorities", newList);
   };
 
   const handleSubmit = async (values: AnalysisFormValues) => {
     setIsSubmitting(true);
+    console.log("Form gönderiliyor...", values);
     
     try {
-      // API'ye veri gönderme işlemi burada yapılacak
-      console.log(values);
+      // API'ye gönderilecek verileri hazırla
+      const programData = {
+        examType: values.examType,
+        examDate: values.examDate,
+        studentName: values.name || "Adsız Öğrenci",
+        email: values.email,
+        topicRatings: values.topicRatings || {},
+        subjectPriorities: values.subjectPriorities || prioritizedSubjects,
+        dailyStudyHours: values.hoursPerDay || 3,
+        weekendStudyHours: (values.hoursPerDay || 3) + 1,
+        includeBreaks: true
+      };
       
-      // Başarılı olursa önizleme sayfasına yönlendir
-      // Normalde API'den dönen program ID'si ile yönlendirilecek
-      router.push(`/preview/12345`);
-    } catch (error) {
-      console.error("Form submission error:", error);
+      console.log("Program verileri:", JSON.stringify(programData, null, 2));
+      
+      // Program oluşturma API'sine istek gönder
+      console.log("API isteği gönderiliyor: /api/program/generate");
+      
+      try {
+      const response = await fetch('/api/program/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(programData),
+      });
+        
+        console.log("API yanıtı:", response.status, response.statusText);
+        
+        const errorText = await response.text();
+        console.log("API yanıt metni:", errorText);
+      
+      if (!response.ok) {
+          console.error("API hata yanıtı:", errorText);
+          throw new Error(`Program oluşturulurken bir hata oluştu: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+      
+        try {
+          const result = JSON.parse(errorText);
+          console.log("API başarılı yanıt (parsed):", result);
+      
+      if (result.success && result.programId) {
+        // Başarılı olursa önizleme sayfasına yönlendir
+            console.log("Yönlendiriliyor:", `/preview/${result.programId}`);
+        router.push(`/preview/${result.programId}`);
+      } else {
+            console.error("Beklenmeyen API yanıtı:", result);
+            throw new Error("Program ID bulunamadı");
+          }
+        } catch (parseError) {
+          console.error("JSON parse hatası:", parseError);
+          throw new Error("API yanıtı geçerli bir JSON değil");
+        }
+      } catch (fetchError: any) {
+        console.error("Fetch hatası:", fetchError);
+        throw fetchError;
+      }
+    } catch (error: any) {
+      console.error("Form gönderim hatası:", error);
+      console.error("Hata detayları:", error.stack);
+      alert(`Program oluşturma hatası: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -211,7 +373,27 @@ export function AnalysisForm() {
               </CardTitle>
             </CardHeader>
             
-            <form onSubmit={form.handleSubmit(handleSubmit)}>
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                // Form doğrulama hatalarını kontrol et
+                if (Object.keys(form.formState.errors).length > 0) {
+                  console.error("Form hataları:", form.formState.errors);
+                  alert("Lütfen form alanlarını kontrol edin ve tekrar deneyin.");
+                  return;
+                }
+                
+                // Gerekli alanların doldurulduğundan emin ol
+                if (!form.getValues("examType") || !form.getValues("examDate") || !form.getValues("email")) {
+                  alert("Lütfen gerekli alanları doldurun: Sınav Türü, Sınav Tarihi ve E-posta");
+                  return;
+                }
+                
+                // Form verilerini al ve gönder
+                const values = form.getValues();
+                handleSubmit(values as AnalysisFormValues);
+              }}
+            >
               <CardContent className="space-y-6">
                 <TabsContent value="personal-info" className="space-y-6">
                   <div className="space-y-4">
@@ -240,24 +422,6 @@ export function AnalysisForm() {
                           {form.formState.errors.email.message}
                         </p>
                       )}
-                    </div>
-                    
-                    <div>
-                      <label htmlFor="country" className="block text-sm font-medium mb-2">
-                        Ülke <span className="text-red-500">*</span>
-                      </label>
-                      <Select defaultValue={selectedCountry} onValueChange={handleCountryChange}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Ülke seçin" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {countries.map((country) => (
-                            <SelectItem key={country.code} value={country.code}>
-                              {country.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
                     </div>
                     
                     <div>
@@ -504,10 +668,10 @@ export function AnalysisForm() {
                 <TabsContent value="subject-analysis" className="space-y-6">
                   <div className="space-y-8">
                     <div className="space-y-4">
-                      <h3 className="text-lg font-medium">Konu Yetkinlik Analizi</h3>
+                      <h3 className="text-lg font-medium">Konu Analizi ve Önceliklendirme</h3>
                       <p className="text-sm text-muted-foreground">
-                        Konularınızdaki yetkinlik seviyenizi belirleyin.
-                        Bu bilgi, programınızın eksik olduğunuz konulara daha fazla zaman ayırmasını sağlayacaktır.
+                        Bu adımda, çalışacağınız konuları önceliklendirip, her birindeki yetkinlik seviyenizi belirleyeceksiniz.
+                        Bu bilgiler, programınızın kişiselleştirilmesinde kullanılacaktır.
                       </p>
                       
                       {subjects.length === 0 ? (
@@ -526,129 +690,203 @@ export function AnalysisForm() {
                           </div>
                         </div>
                       ) : (
-                        <div className="space-y-6">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center font-medium">
-                            <div className="p-3 bg-red-100 dark:bg-red-900/20 rounded-lg">
-                              Zayıf Olduğunuz Konular
+                        <div className="space-y-8">
+                          {/* 1. Konu Önceliklendirme Sistemi */}
+                          <div className="mb-8">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-lg font-medium mb-4">1. Ders Öncelik Sıralaması</h3>
+                              <div className="text-xs text-muted-foreground italic">
+                                Sürükle & bırak ile yeniden sıralayın
                             </div>
-                            <div className="p-3 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg">
-                              Orta Seviyede Olduğunuz Konular
                             </div>
-                            <div className="p-3 bg-green-100 dark:bg-green-900/20 rounded-lg">
-                              Güçlü Olduğunuz Konular
+                            
+                            <div className="bg-white/30 dark:bg-white/5 p-4 rounded-xl border border-border shadow-sm">
+                              <p className="text-sm text-muted-foreground mb-4">
+                                Dersleri öncelik sırasına göre düzenleyin. Listede en üstte yer alan ders programda en çok öncelik verilecek derstir.
+                              </p>
+                              <div className="space-y-2">
+                                {prioritizedSubjects.map((subject, index) => (
+                                  <div
+                                    key={subject}
+                                    draggable
+                                    onDragStart={() => handleDragStart(subject)}
+                                    onDragEnd={handleDragEnd}
+                                    onDragOver={(e) => handleDragOver(e, index)}
+                                    className={clsx(
+                                      "flex items-center justify-between bg-white dark:bg-gray-800 p-3 rounded-lg border cursor-move transition-all",
+                                      draggedSubject === subject ? "opacity-50 border-primary" : "border-border",
+                                      "hover:border-primary hover:shadow-md"
+                                    )}
+                                  >
+                                    <div className="flex items-center">
+                                      <div className="w-8 h-8 flex items-center justify-center rounded-full bg-muted mr-3">
+                                        {index + 1}
+                            </div>
+                                      <span>{subject}</span>
+                            </div>
+                                    <DragHandleDots2Icon className="h-5 w-5 text-muted-foreground" />
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           </div>
                           
-                          <div className="space-y-4">
-                            {subjects.map((subject) => (
-                              <div 
-                                key={subject} 
-                                className="p-4 border rounded-lg hover:border-primary transition-colors"
-                              >
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                  <div className="font-medium">{subject}</div>
-                                  <div className="w-full sm:w-auto">
-                                    <RadioGroup
-                                      defaultValue={form.watch(`subjectAnalysis.${subject}.level`) || "medium"}
-                                      onValueChange={(value) => 
-                                        form.setValue(`subjectAnalysis.${subject}.level`, value as "strong" | "medium" | "weak")
-                                      }
-                                      className="flex w-full"
-                                    >
-                                      <div className="flex items-center flex-1">
-                                        <RadioGroupItem value="weak" id={`${subject}-weak`} className="sr-only" />
-                                        <Label
-                                          htmlFor={`${subject}-weak`}
-                                          className={`flex-1 cursor-pointer rounded-l-md border px-3 py-2 text-center text-sm ${
-                                            form.watch(`subjectAnalysis.${subject}.level`) === "weak"
-                                              ? "border-red-500 bg-red-100 dark:bg-red-900/20 text-red-900 dark:text-red-100"
-                                              : "border-muted bg-background hover:bg-muted/50"
-                                          }`}
-                                        >
-                                          Zayıf
-                                        </Label>
-                                      </div>
-                                      
-                                      <div className="flex items-center flex-1">
-                                        <RadioGroupItem value="medium" id={`${subject}-medium`} className="sr-only" />
-                                        <Label
-                                          htmlFor={`${subject}-medium`}
-                                          className={`flex-1 cursor-pointer border-y px-3 py-2 text-center text-sm ${
-                                            form.watch(`subjectAnalysis.${subject}.level`) === "medium"
-                                              ? "border-yellow-500 bg-yellow-100 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100"
-                                              : "border-muted bg-background hover:bg-muted/50"
-                                          }`}
-                                        >
-                                          Orta
-                                        </Label>
-                                      </div>
-                                      
-                                      <div className="flex items-center flex-1">
-                                        <RadioGroupItem value="strong" id={`${subject}-strong`} className="sr-only" />
-                                        <Label
-                                          htmlFor={`${subject}-strong`}
-                                          className={`flex-1 cursor-pointer rounded-r-md border px-3 py-2 text-center text-sm ${
-                                            form.watch(`subjectAnalysis.${subject}.level`) === "strong"
-                                              ? "border-green-500 bg-green-100 dark:bg-green-900/20 text-green-900 dark:text-green-100"
-                                              : "border-muted bg-background hover:bg-muted/50"
-                                          }`}
-                                        >
-                                          Güçlü
-                                        </Label>
-                                      </div>
-                                    </RadioGroup>
-                                  </div>
+                          {/* 2. Konu Yetkinlik Analizi */}
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-lg font-medium mb-4">2. Ders Yetkinlik Analizi</h3>
+                            </div>
+                            
+                            {/* Değerlendirme Ölçeği */}
+                            <div className="grid grid-cols-5 gap-2 text-center text-sm font-medium mb-6">
+                              <div className="p-2.5 bg-red-100 dark:bg-red-900/20 rounded-lg shadow-sm border border-red-200 dark:border-red-800/30 hover:shadow-md transition-shadow">
+                                <div className="flex justify-center mb-1">
+                                  <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center text-white text-xs font-bold">1</div>
                                 </div>
-                                
-                                <div className="mt-4 space-y-4">
-                                  <div className="space-y-2">
-                                    <div className="flex justify-between text-sm">
-                                      <span>Zorluk Derecesi</span>
-                                      <span>{form.watch(`subjectAnalysis.${subject}.difficulty`) || 3}/5</span>
-                                    </div>
-                                    <Slider
-                                      defaultValue={[form.watch(`subjectAnalysis.${subject}.difficulty`) || 3]}
-                                      min={1}
-                                      max={5}
-                                      step={1}
-                                      onValueChange={(value: number[]) => 
-                                        form.setValue(`subjectAnalysis.${subject}.difficulty`, value[0])
-                                      }
-                                    />
-                                  </div>
-                                  
-                                  <div className="space-y-2">
-                                    <div className="flex justify-between text-sm">
-                                      <span>Öncelik Sırası</span>
-                                      <span>{form.watch(`subjectAnalysis.${subject}.priority`) || 3}/5</span>
-                                    </div>
-                                    <Slider
-                                      defaultValue={[form.watch(`subjectAnalysis.${subject}.priority`) || 3]}
-                                      min={1}
-                                      max={5}
-                                      step={1}
-                                      onValueChange={(value: number[]) => 
-                                        form.setValue(`subjectAnalysis.${subject}.priority`, value[0])
-                                      }
-                                    />
-                                  </div>
-                                  
-                                  <div className="space-y-2">
-                                    <label htmlFor={`${subject}-notes`} className="text-sm font-medium">
-                                      Notlar (Opsiyonel)
-                                    </label>
-                                    <Input
-                                      id={`${subject}-notes`}
-                                      placeholder="Bu konu hakkında eklemek istediğiniz notlar..."
-                                      value={form.watch(`subjectAnalysis.${subject}.notes`) || ""}
-                                      onChange={(e) => 
-                                        form.setValue(`subjectAnalysis.${subject}.notes`, e.target.value)
-                                      }
-                                    />
-                                  </div>
+                                <span>Hiç Bilmiyorum</span>
+                              </div>  
+                              <div className="p-2.5 bg-orange-100 dark:bg-orange-900/20 rounded-lg shadow-sm border border-orange-200 dark:border-orange-800/30 hover:shadow-md transition-shadow">
+                                <div className="flex justify-center mb-1">
+                                  <div className="w-5 h-5 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold">2</div>
                                 </div>
+                                <span>Az Biliyorum</span>
                               </div>
-                            ))}
+                              <div className="p-2.5 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg shadow-sm border border-yellow-200 dark:border-yellow-800/30 hover:shadow-md transition-shadow">
+                                <div className="flex justify-center mb-1">
+                                  <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-white text-xs font-bold">3</div>
+                                </div>
+                                <span>Orta Seviye</span>
+                              </div>
+                              <div className="p-2.5 bg-teal-100 dark:bg-teal-900/20 rounded-lg shadow-sm border border-teal-200 dark:border-teal-800/30 hover:shadow-md transition-shadow">
+                                <div className="flex justify-center mb-1">
+                                  <div className="w-5 h-5 rounded-full bg-teal-500 flex items-center justify-center text-white text-xs font-bold">4</div>
+                                </div>
+                                <span>İyi Biliyorum</span>
+                              </div>
+                              <div className="p-2.5 bg-green-100 dark:bg-green-900/20 rounded-lg shadow-sm border border-green-200 dark:border-green-800/30 hover:shadow-md transition-shadow">
+                                <div className="flex justify-center mb-1">
+                                  <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center text-white text-xs font-bold">5</div>
+                                </div>
+                                <span>Çok İyi Biliyorum</span>
+                              </div>
+                            </div>
+                            
+                            <p className="text-sm text-muted-foreground mb-4">
+                              Her bir konu için yetkinlik seviyenizi 1'den 5'e kadar değerlendirin.
+                              Bu değerlendirme, zayıf olduğunuz konulara daha fazla zaman ayırmanızı sağlayacaktır.
+                            </p>
+                          
+                          <div className="space-y-3">
+                            <Accordion type="multiple" className="w-full">
+                              {subjects.map((subject) => {
+                                // Desteklenen bir sınav türü mü kontrol et
+                                const isInExamSubjects = Object.values(ExamType).includes(selectedExamType as ExamType) && 
+                                                       examSubjects[selectedExamType as ExamType].some(s => s.name === subject);
+                                  
+                                // Eğer desteklenen bir sınav türüyse, dersin konularını al  
+                                const subjectTopics = isInExamSubjects 
+                                  ? examSubjects[selectedExamType as ExamType].find(s => s.name === subject)?.topics || []
+                                  : ["Genel"];
+                                    
+                                  // Dersin zorluk derecesini al
+                                  const difficulty = isInExamSubjects
+                                    ? examSubjects[selectedExamType as ExamType].find(s => s.name === subject)?.difficulty || 3
+                                    : 3;
+                                    
+                                  // Dersin simgesini belirle
+                                  const icon = getSubjectIcon(subject);
+                                  
+                                  // Değerlendirmelerin ortalamasını hesapla
+                                  let avgRating = 3;
+                                  let totalRatings = 0;
+                                  let ratingsCount = 0;
+                                  
+                                  const topicRatings = form.getValues("topicRatings");
+                                  if (topicRatings && subject in topicRatings) {
+                                    const ratings = topicRatings[subject] || {};
+                                    for (const topic in ratings) {
+                                      if (ratings[topic]) {
+                                        totalRatings += ratings[topic];
+                                        ratingsCount++;
+                                      }
+                                    }
+                                    if (ratingsCount > 0) {
+                                      avgRating = Math.round(totalRatings / ratingsCount);
+                                    }
+                                  }
+                                  
+                                  // Progress göstergesi için renk
+                                  const progressColor = 
+                                    avgRating <= 2 ? "bg-red-500" :
+                                    avgRating === 3 ? "bg-yellow-500" :
+                                    "bg-green-500";
+                                  
+                                return (
+                                    <AccordionItem key={subject} value={subject} className="border-border rounded-lg mb-3 overflow-hidden shadow-sm border bg-white/30 dark:bg-white/5">
+                                      <AccordionTrigger className="px-4 py-3 hover:bg-accent hover:no-underline data-[state=open]:bg-accent flex items-center">
+                                        <div className="flex flex-1 items-center">
+                                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center mr-3">
+                                            {icon}
+                                          </div>
+                                          <div className="flex-1">
+                                            <span className="text-base font-medium">{subject}</span>
+                                            <div className="flex items-center mt-1">
+                                              <div className="h-2 w-24 bg-muted rounded-full overflow-hidden">
+                                                <div 
+                                                  className={`h-full ${progressColor} transition-all`} 
+                                                  style={{ width: `${(avgRating / 5) * 100}%` }} 
+                                                />
+                                              </div>
+                                              <span className="text-xs text-muted-foreground ml-2">
+                                                Zorluk: {difficulty}/5
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <PlusIcon className="h-4 w-4 shrink-0 transition-transform duration-200 data-[state=open]:hidden" />
+                                        <MinusIcon className="h-4 w-4 shrink-0 transition-transform duration-200 hidden data-[state=open]:block" />
+                                    </AccordionTrigger>
+                                      
+                                      <AccordionContent className="pb-3 px-4">
+                                        <div className="pt-2 pb-1 space-y-4">
+                                          {subjectTopics.map((topic, topicIndex) => (
+                                            <div key={`${subject}-${topic}`} className="space-y-1">
+                                              <div className="flex justify-between items-center">
+                                                <label 
+                                                  htmlFor={`${subject}-${topic}-rating`} 
+                                                  className="text-sm font-medium"
+                                                >
+                                                  {topic}
+                                                </label>
+                                                <div className="text-xs text-muted-foreground">
+                                                  Yetkinlik: {form.getValues(`topicRatings.${subject}.${topic}`) || 3}/5
+                                                  </div>
+                                              </div>
+                                              
+                                              <div className="flex items-center space-x-2">
+                                                <span className="text-xs font-medium text-muted-foreground">Düşük</span>
+                                                <Slider
+                                                  id={`${subject}-${topic}-rating`}
+                                                  min={1}
+                                                  max={5}
+                                                  step={1}
+                                                  defaultValue={[form.getValues(`topicRatings.${subject}.${topic}`) || 3]}
+                                                  onValueChange={(value) => {
+                                                    form.setValue(`topicRatings.${subject}.${topic}`, value[0], { shouldDirty: true });
+                                                  }}
+                                                  className="flex-1"
+                                                />
+                                                <span className="text-xs font-medium text-muted-foreground">Yüksek</span>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </AccordionContent>
+                                  </AccordionItem>
+                                );
+                              })}
+                            </Accordion>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -674,144 +912,87 @@ export function AnalysisForm() {
                 
                 <TabsContent value="goals" className="space-y-6">
                   <div className="space-y-6">
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-medium">Hedefleriniz</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Hedefleriniz, çalışma programınızın şekillenmesinde önemli bir rol oynayacaktır.
-                        Lütfen gerçekçi ve ulaşılabilir hedefler belirleyin.
-                      </p>
+                    <div>
+                      <label htmlFor="overallGoal" className="block text-sm font-medium mb-2">
+                        Genel Hedef <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="overallGoal"
+                        placeholder="Örnek: Üniversiteye giriş"
+                        {...form.register("overallGoal")}
+                      />
                     </div>
                     
-                    <div className="space-y-4">
-                      <div>
-                        <label htmlFor="overallGoal" className="block text-sm font-medium mb-2">
-                          Genel Hedefiniz <span className="text-red-500">*</span>
-                        </label>
-                        <Input
-                          id="overallGoal"
-                          placeholder="Örn: Tıp fakültesine girmek, İlk 10.000'e girmek, vb."
-                          {...form.register("overallGoal")}
-                        />
-                        {form.formState.errors.overallGoal && (
-                          <p className="text-red-500 text-sm mt-1">
-                            {form.formState.errors.overallGoal.message}
-                          </p>
-                        )}
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label htmlFor="targetScore" className="block text-sm font-medium mb-2">
-                            Hedef Puan (Opsiyonel)
-                          </label>
-                          <Input
-                            id="targetScore"
-                            type="number"
-                            placeholder="Hedeflediğiniz puan"
-                            value={form.watch("targetScore") || ""}
-                            onChange={(e) => form.setValue("targetScore", 
-                              e.target.value ? Number(e.target.value) : undefined
-                            )}
-                          />
-                        </div>
-                        
-                        <div>
-                          <label htmlFor="targetRanking" className="block text-sm font-medium mb-2">
-                            Hedef Sıralama (Opsiyonel)
-                          </label>
-                          <Input
-                            id="targetRanking"
-                            type="number"
-                            placeholder="Hedeflediğiniz sıralama"
-                            value={form.watch("targetRanking") || ""}
-                            onChange={(e) => form.setValue("targetRanking", 
-                              e.target.value ? Number(e.target.value) : undefined
-                            )}
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        <label className="block text-sm font-medium mb-1">
-                          Motivasyon Faktörleri
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                          {[
-                            { id: "career", label: "Kariyer hedefleri" },
-                            { id: "family", label: "Aile desteği" },
-                            { id: "personal", label: "Kişisel tatmin" },
-                            { id: "competition", label: "Rekabet duygusu" },
-                            { id: "academic", label: "Akademik başarı" },
-                            { id: "financial", label: "Finansal fırsatlar" },
-                            { id: "future", label: "Geleceği güvence altına alma" },
-                            { id: "passion", label: "İlgi alanlarına yönelme" },
-                            { id: "social", label: "Sosyal statü" }
-                          ].map((factor) => (
-                            <div key={factor.id} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`factor-${factor.id}`}
-                                checked={form.watch("motivationFactors")?.includes(factor.id)}
-                                onCheckedChange={(checked) => {
-                                  const currentFactors = form.watch("motivationFactors") || [];
-                                  if (checked) {
-                                    form.setValue("motivationFactors", [...currentFactors, factor.id]);
-                                  } else {
-                                    form.setValue(
-                                      "motivationFactors",
-                                      currentFactors.filter((f) => f !== factor.id)
-                                    );
-                                  }
-                                }}
-                              />
-                              <label
-                                htmlFor={`factor-${factor.id}`}
-                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                              >
-                                {factor.label}
-                              </label>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                    <div>
+                      <label htmlFor="targetScore" className="block text-sm font-medium mb-2">
+                        Hedef Puanı (Opsiyonel)
+                      </label>
+                      <Input
+                        id="targetScore"
+                        type="number"
+                        {...form.register("targetScore", {
+                          valueAsNumber: true,
+                          setValueAs: (v) => v === "" ? undefined : isNaN(parseInt(v)) ? undefined : parseInt(v, 10)
+                        })}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="targetRanking" className="block text-sm font-medium mb-2">
+                        Hedef Sıralaması (Opsiyonel)
+                      </label>
+                      <Input
+                        id="targetRanking"
+                        type="number"
+                        {...form.register("targetRanking", {
+                          valueAsNumber: true,
+                          setValueAs: (v) => v === "" ? undefined : isNaN(parseInt(v)) ? undefined : parseInt(v, 10)
+                        })}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="motivationFactors" className="block text-sm font-medium mb-2">
+                        Motivasyon Faktörleri (Opsiyonel)
+                      </label>
+                      <Input
+                        id="motivationFactors"
+                        placeholder="Örnek: Sınav hazırlığı, okul işleri"
+                        defaultValue=""
+                        {...form.register("motivationFactors", {
+                          setValueAs: (v: any) => {
+                            if (!v) return [];
+                            if (Array.isArray(v)) return v;
+                            if (typeof v === 'string') {
+                              // Boş string kontrolü
+                              if (v.trim() === '') return [];
+                              return v.split(',').map((item: string) => item.trim());
+                            }
+                            return [];
+                          }
+                        })}
+                      />
                     </div>
                   </div>
                   
-                  <div className="flex justify-between mt-6">
+                  <div className="flex justify-end">
                     <Button
                       type="button"
-                      variant="outline"
                       onClick={() => setCurrentStep("subject-analysis")}
                     >
                       Geri
                     </Button>
-                    <Button type="submit" disabled={isSubmitting}>
+                    <Button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="ml-2"
+                    >
                       {isSubmitting ? (
-                        <div className="flex items-center">
-                          <span className="mr-2">Gönderiliyor...</span>
-                          <svg
-                            className="animate-spin h-4 w-4 text-current"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            ></circle>
-                            <path
-                              className="opacity-75"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              fill="currentColor"
-                            ></path>
-                          </svg>
-                        </div>
-                      ) : (
-                        "Program Oluştur"
-                      )}
+                        <>
+                          <span className="animate-spin mr-2">⚙️</span>
+                          Program Oluşturuluyor...
+                        </>
+                      ) : "Program Oluştur"}
                     </Button>
                   </div>
                 </TabsContent>
@@ -823,5 +1004,3 @@ export function AnalysisForm() {
     </div>
   );
 }
-
-export default AnalysisForm; 

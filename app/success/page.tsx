@@ -6,11 +6,11 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, Download, Mail, ArrowRight, Share, FileDown, Clock, Loader2, AlertCircle } from "lucide-react";
+import { CheckCircle, Download, Mail, ArrowRight, Share, FileDown, Clock, Loader2, AlertCircle, Share2, Calendar, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { Input } from "@/components/ui/input";
-import { Share2, Calendar, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 export default function SuccessPage() {
   const router = useRouter();
@@ -19,6 +19,7 @@ export default function SuccessPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [countdown, setCountdown] = useState(5);
   const [emailResending, setEmailResending] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   // searchParams'dan programId'yi güvenli bir şekilde al
   useEffect(() => {
@@ -27,6 +28,27 @@ export default function SuccessPage() {
       setIsLoading(false);
     }
   }, [searchParams]);
+  
+  // Kullanıcının oturum açıp açmadığını kontrol et
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/auth/session');
+        const data = await response.json();
+        
+        if (data.authenticated && data.user) {
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.error('Oturum kontrolü yapılırken hata oluştu:', error);
+        setIsAuthenticated(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
   
   // Sayfa yüklendiğinde konfeti efekti
   useEffect(() => {
@@ -320,12 +342,110 @@ export default function SuccessPage() {
           </motion.div>
         </div>
         
+        {!isAuthenticated && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="mb-12 flex justify-center"
+          >
+            <Card className="border-primary border shadow-md max-w-3xl w-full">
+              <CardHeader className="pb-2 bg-primary/10">
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <UserPlus className="w-5 h-5 text-primary" />
+                  Hesap Oluşturma Önerisi
+                </CardTitle>
+                <CardDescription>
+                  Programlarınızı ve gelecekteki satın alımlarınızı daha kolay yönetmek için bir hesap oluşturun.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <p className="text-muted-foreground mb-4">
+                  Hesap oluşturarak aşağıdaki avantajlardan yararlanabilirsiniz:
+                </p>
+                <ul className="list-disc pl-5 space-y-2 text-muted-foreground mb-4">
+                  <li>Tüm programlarınıza tek bir yerden erişim</li>
+                  <li>Programlarınızı farklı cihazlardan görüntüleme</li>
+                  <li>Güncelleme ve yeni özelliklerden haberdar olma</li>
+                  <li>Gelecekteki satın alımlarda kolaylık</li>
+                </ul>
+                <p className="text-sm font-medium text-primary mt-4">
+                  E-posta adresinizle hızlıca hesap oluşturabilirsiniz.
+                </p>
+              </CardContent>
+              <CardFooter className="flex flex-col sm:flex-row gap-3">
+                <Button 
+                  className="w-full sm:w-auto" 
+                  onClick={() => router.push(`/register?email=${encodeURIComponent(programData.emailAddress)}&redirect=program/${programId}`)}
+                >
+                  Hesap Oluştur
+                </Button>
+                <Button 
+                  variant="outline"
+                  className="w-full sm:w-auto" 
+                  onClick={() => router.push(`/login?redirect=program/${programId}`)}
+                >
+                  Giriş Yap
+                </Button>
+              </CardFooter>
+            </Card>
+          </motion.div>
+        )}
+        
         <motion.div
           className="space-y-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
         >
+          <Card className="border-primary/20 shadow-md mb-8">
+            <CardHeader className="pb-2 bg-primary/5">
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Calendar className="w-5 h-5 text-primary" />
+                Programınıza Erişin
+              </CardTitle>
+              <CardDescription>
+                Programınızı interaktif olarak görüntüleyebilir ve takip edebilirsiniz.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="flex flex-col space-y-4">
+                <p className="text-muted-foreground">
+                  Çalışma programınızı web tarayıcınızdan interaktif olarak görüntüleyebilirsiniz. 
+                  Programınıza dilediğiniz zaman erişmek için aşağıdaki bağlantıyı kaydedin veya yer imlerinize ekleyin.
+                </p>
+                
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                  <div className="truncate font-medium">
+                    {typeof window !== 'undefined' ? `${window.location.origin}/program/${programId}` : `https://studymap.app/program/${programId}`}
+                  </div>
+                  <Button 
+                    size="sm"
+                    onClick={() => {
+                      const url = typeof window !== 'undefined' 
+                        ? `${window.location.origin}/program/${programId}` 
+                        : `https://studymap.app/program/${programId}`;
+                      navigator.clipboard.writeText(url);
+                      toast.success('Program adresi kopyalandı!');
+                    }}
+                  >
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Kopyala
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button 
+                className="w-full" 
+                onClick={() => router.push(`/program/${programId}`)}
+              >
+                Programa Git
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </CardFooter>
+          </Card>
+
           <div className="text-center">
             <h2 className="text-2xl font-bold mb-2">Sonraki Adımlar</h2>
             <p className="text-muted-foreground">

@@ -4,162 +4,150 @@ import { tr } from "date-fns/locale";
 // Türkçe gün isimleri
 const dayNames = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
 
-// Rastgele dersler ve konular
+// Amerikan sınavları için rastgele dersler ve konular
 const subjects = [
   {
     name: "Matematik",
     topics: [
-      "Türev", "İntegral", "Limit", "Fonksiyonlar", "Karmaşık Sayılar",
-      "Trigonometri", "Logaritma", "Üslü Sayılar", "Polinomlar", "Denklem Sistemleri"
+      "Cebir", "Doğrusal Denklemler", "Fonksiyonlar", "Geometri", "Trigonometri",
+      "Veri Analizi", "İstatistik", "Olasılık", "Problem Çözme", "Koordinat Geometrisi"
+    ]
+  },
+  {
+    name: "Okuma",
+    topics: [
+      "Ana Fikir Bulma", "Detay Sorular", "Çıkarım Yapma", "Referans İfadeleri", 
+      "Yazarın Amacı", "Retorik Teknikler", "Metin Analizi", "Kelime Bilgisi", 
+      "Metin Karşılaştırma", "Bilimsel Metinler"
+    ]
+  },
+  {
+    name: "Yazma",
+    topics: [
+      "Gramer", "Cümle Yapısı", "Makale Yazma", "Tez Geliştirme", "Argüman Oluşturma",
+      "Kanıt Kullanımı", "Retorik Beceriler", "Düzenleme", "Açıklayıcı Yazı", "İkna Edici Yazı"
+    ]
+  },
+  {
+    name: "Fen Bilimleri",
+    topics: [
+      "Fizik", "Kimya", "Biyoloji", "Dünya Bilimleri", "Bilimsel Yöntem",
+      "Veri Yorumlama", "Deney Tasarımı", "Bilimsel Modeller", "Enerji", "Termodinamik"
     ]
   },
   {
     name: "Fizik",
     topics: [
-      "Mekanik", "Elektrik", "Manyetizma", "Optik", "Dalgalar",
-      "Termodinamik", "Kuantum Fiziği", "Modern Fizik", "Hareket", "Enerji"
+      "Mekanik", "Elektrik ve Manyetizma", "Termodinamik", "Dalgalar ve Optik",
+      "Modern Fizik", "Akışkanlar", "Enerji", "Kuvvet ve Hareket", "Kuantum Fiziği", "Nükleer Fizik"
     ]
   },
   {
     name: "Kimya",
     topics: [
-      "Atomun Yapısı", "Periyodik Tablo", "Kimyasal Bağlar", "Organik Kimya",
-      "Asitler ve Bazlar", "Reaksiyonlar", "Gaz Kanunları", "Karışımlar", "Çözeltiler", "Katılar"
+      "Atom Yapısı", "Kimyasal Bağlar", "Periyodik Tablo", "Asitler ve Bazlar",
+      "Redoks Reaksiyonları", "Organik Kimya", "Termodinamik", "Kinetik", "Denge", "Elektrokimya"
     ]
   },
   {
-    name: "Biyoloji",
+    name: "ABD Tarihi",
     topics: [
-      "Hücre", "Kalıtım", "Evrim", "Ekoloji", "Bitki Fizyolojisi",
-      "Hayvan Fizyolojisi", "Sinir Sistemi", "Dolaşım Sistemi", "Solunum", "Boşaltım"
-    ]
-  },
-  {
-    name: "Türkçe",
-    topics: [
-      "Paragraf", "Dil Bilgisi", "Sözcük Türleri", "Cümle Türleri", "Söz Sanatları",
-      "Anlatım Bozuklukları", "Noktalama İşaretleri", "Yazım Kuralları", "Metin Türleri", "Anlam Bilgisi"
-    ]
-  },
-  {
-    name: "Tarih",
-    topics: [
-      "İlk Çağ Uygarlıkları", "Orta Çağ", "Osmanlı Tarihi", "İnkılap Tarihi", "Dünya Savaşları",
-      "Soğuk Savaş", "Türk Devletleri", "Modern Dünya Tarihi", "Siyasi Tarih", "Kültür Tarihi"
-    ]
-  },
-  {
-    name: "Coğrafya",
-    topics: [
-      "Fiziki Coğrafya", "Beşeri Coğrafya", "Ekonomik Coğrafya", "Türkiye Coğrafyası",
-      "İklim Bilgisi", "Haritalar", "Nüfus", "Yerleşme", "Ulaşım", "Doğal Afetler"
+      "Kolonyal Dönem", "Amerikan Devrimi", "İç Savaş", "Yeniden Yapılanma",
+      "Sanayi Devrimi", "Dünya Savaşları", "Soğuk Savaş", "Sivil Haklar Hareketi", "Modern ABD", "Küresel İlişkiler"
     ]
   }
 ];
 
-// Rastgele sınav türleri
-const examTypes = ["YKS", "KPSS", "ALES", "YDS", "DGS", "TYT", "AYT"];
+// Amerikan sınav türleri
+const examTypes = ["SAT", "ACT", "GRE", "GMAT", "MCAT", "PSAT", "LSAT", "AP", "IB"];
 
-// Rastgele bir program oluşturan fonksiyon
-export const generateRandomProgram = (programId: string) => {
-  // Rastgele 1 ila 3 ay arası bir sınav süresi belirle
-  const examDateMonths = Math.floor(Math.random() * 3) + 1;
-  const examDate = addDays(new Date(), examDateMonths * 30);
-  
-  // Program oluşturulma tarihini şimdi olarak belirle
-  const createdAt = new Date();
-  
-  // Rastgele bir sınav türü seç
-  const examType = examTypes[Math.floor(Math.random() * examTypes.length)];
-  
-  // Haftaların sayısını hesapla
-  const weekCount = Math.ceil(examDateMonths * 4);
-  
-  // Haftaları oluştur
+// Haftalık program oluşturma
+function generateDummyWeeklyProgram() {
+  const programStartDate = startOfDay(new Date());
   const weeks = [];
-  let currentDate = startOfDay(new Date());
   
-  for (let weekNumber = 1; weekNumber <= weekCount; weekNumber++) {
-    const weekStartDate = new Date(currentDate);
-    const weekEndDate = addDays(currentDate, 6);
-    
-    // Günleri oluştur
+  for (let week = 0; week < 8; week++) {
+    const weekStartDate = addDays(programStartDate, week * 7);
     const days = [];
-    for (let i = 0; i < 7; i++) {
-      const date = addDays(currentDate, i);
-      // Tarihi string olarak biçimlendir - YYYY-MM-DD formatında
-      const dateStr = format(date, "yyyy-MM-dd");
-      // Haftanın gününü al (0: Pazartesi, 6: Pazar)
-      const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
-      const dayName = dayNames[dayIndex];
+    
+    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+      const dayDate = addDays(weekStartDate, dayOffset);
+      const formattedDate = format(dayDate, "d MMMM", { locale: tr });
+      const dayNameIndex = dayDate.getDay() === 0 ? 6 : dayDate.getDay() - 1;
       
-      // Günün derslerini oluştur - hafta içi 2-4 arası, hafta sonu 1-2 arası
-      const subjectCount = dayIndex < 5 
-        ? Math.floor(Math.random() * 3) + 2 // Hafta içi 2-4
-        : Math.floor(Math.random() * 2) + 1; // Hafta sonu 1-2
+      const dailySubjects = [];
       
-      const daySubjects = [];
-      for (let j = 0; j < subjectCount; j++) {
-        // Rastgele bir ders seç
+      // Hafta içi 2-3 ders, hafta sonu 3-4 ders
+      const subjectCount = dayOffset < 5 ? Math.floor(Math.random() * 2) + 2 : Math.floor(Math.random() * 2) + 3;
+      
+      for (let s = 0; s < subjectCount; s++) {
         const randomSubjectIndex = Math.floor(Math.random() * subjects.length);
         const subject = subjects[randomSubjectIndex];
         
-        // Rastgele konu sayısı (1-3 arası)
-        const topicCount = Math.floor(Math.random() * 3) + 1;
+        // Her ders için 2-3 konu seç
+        const selectedTopics: string[] = [];
+        const topicCount = Math.floor(Math.random() * 2) + 1;
         
-        // Konuları karıştır ve seç
-        const shuffledTopics = [...subject.topics].sort(() => 0.5 - Math.random());
-        const selectedTopics = shuffledTopics.slice(0, topicCount);
+        for (let t = 0; t < topicCount; t++) {
+          const randomTopicIndex = Math.floor(Math.random() * subject.topics.length);
+          const topic = subject.topics[randomTopicIndex];
+          
+          if (!selectedTopics.includes(topic)) {
+            selectedTopics.push(topic);
+          }
+        }
         
-        // Rastgele çalışma süresi (30 ile 120 dakika arası, 15'in katları)
-        const duration = (Math.floor(Math.random() * 7) + 2) * 15;
+        // Ders çalışma süresi (dakika)
+        const duration = (Math.floor(Math.random() * 5) + 5) * 10; // 50-90 dakika arası
         
-        daySubjects.push({
+        dailySubjects.push({
           name: subject.name,
-          duration: duration,
+          duration,
           topics: selectedTopics
         });
       }
       
       days.push({
-        date: dateStr,
-        dayName: dayName,
-        subjects: daySubjects
+        date: formattedDate,
+        dayName: dayNames[dayNameIndex],
+        subjects: dailySubjects
       });
     }
     
     weeks.push({
-      weekNumber,
-      startDate: format(weekStartDate, "yyyy-MM-dd"),
-      endDate: format(weekEndDate, "yyyy-MM-dd"),
+      weekNumber: week + 1,
+      startDate: format(weekStartDate, "d MMMM", { locale: tr }),
+      endDate: format(addDays(weekStartDate, 6), "d MMMM", { locale: tr }),
       days
     });
-    
-    // Sonraki haftanın başlangıcına git
-    currentDate = addDays(currentDate, 7);
   }
   
-  // Rastgele notlar
-  const noteCount = Math.floor(Math.random() * 3) + 1;
-  const notes = [
-    "Her gün düzenli olarak çalışmaya özen gösterin.",
-    "Zor konuları tekrar etmeyi unutmayın.",
-    "Soru çözmeye vakit ayırın.",
-    "Deneme sınavları yaparak kendinizi test edin.",
-    "Çalışma süresinden çok, verimli çalışmaya odaklanın.",
-    "Her hafta önceki konuları tekrar edin."
-  ].sort(() => 0.5 - Math.random()).slice(0, noteCount);
-  
   return {
-    id: programId,
-    title: `${examType} Çalışma Programı`,
-    examType,
-    examDate: format(examDate, "yyyy-MM-dd"),
-    studentName: "Ömer Sercan",
-    email: "omersercan@example.com",
-    createdAt: format(createdAt, "yyyy-MM-dd"),
-    totalWeeks: weekCount,
+    title: "Örnek SAT Çalışma Programı",
+    examType: "SAT",
+    examDate: format(addDays(programStartDate, 60), "d MMMM yyyy", { locale: tr }),
+    studentName: "Örnek Öğrenci",
+    createdAt: format(new Date(), "d MMMM yyyy", { locale: tr }),
+    totalWeeks: 8,
     weeks,
-    notes
+    notes: [
+      "Her çalışma oturumu arasında 10-15 dakika ara vermeyi unutmayın.",
+      "Hafta sonları extra pratik testler çözmeye çalışın.",
+      "Her hafta en az bir deneme sınavı çözmeye özen gösterin.",
+      "Reading ve Writing bölümleri için günlük okuma alışkanlığı edinmeye çalışın.",
+      "Math bölümü için formül ve konseptleri ayrıca çalışın."
+    ]
   };
-}; 
+}
+
+export const dummyProgram = generateDummyWeeklyProgram(); 
+
+// Function to generate a random program with a specific ID
+export function generateRandomProgram(programId: string) {
+  const program = generateDummyWeeklyProgram();
+  return {
+    ...program,
+    id: programId,
+    createdAt: format(new Date(), "d MMMM yyyy", { locale: tr })
+  };
+} 

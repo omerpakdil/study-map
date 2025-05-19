@@ -195,12 +195,17 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
         setIsProcessing(false);
         
       } else if (result.provider === 'stripe') {
-        // Stripe - Ödeme sayfasına yönlendir
-        // Not: Gerçek uygulamada, Stripe.js ile ödeme form entegrasyonu yapılmalıdır
-        // Bu demo için basitleştirilmiş sürüm kullanıyoruz
+        // Stripe - Geliştirme ortamında direkt olarak başarılı kabul ediyoruz
+        console.log("GELİŞTİRME MODU: Stripe ödeme simülasyonu - Başarılı kabul edildi");
         
-        // Ödeme başarılıysa e-posta gönder
-        await sendPurchaseEmail(data.email);
+        try {
+          // Ödeme başarılıysa e-posta gönder - hata olursa bile devam et
+          await sendPurchaseEmail(data.email).catch(err => {
+            console.error("E-posta gönderimi hatası, fakat işleme devam ediliyor:", err);
+          });
+        } catch (error) {
+          console.log("E-posta gönderimi başarısız oldu, ancak ödeme işlemi tamamlandı olarak kabul ediliyor");
+        }
         
         // Başarılı ödeme sonrası başarı sayfasına yönlendir
         router.push(`/success?id=${programId}`);

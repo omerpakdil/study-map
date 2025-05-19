@@ -14,20 +14,31 @@ export const generatePDF = async (
   outputPath?: string
 ): Promise<{ filePath: string }> => {
   try {
+    console.log('PDF oluşturma başladı...');
+    
     // Belirtilen bir çıktı yolu yoksa, geçici bir dosya oluştur
     if (!outputPath) {
       const tempDir = os.tmpdir();
       const fileName = `program-${uuidv4()}.pdf`;
       outputPath = path.join(tempDir, fileName);
+      console.log(`Geçici dosya yolu: ${outputPath}`);
+    } else {
+      console.log(`Belirtilen dosya yolu: ${outputPath}`);
     }
     
     // PDF bileşenini dosyaya render et
+    console.log('PDF render işlemi başlatılıyor...');
     await renderToFile(component, outputPath);
+    console.log('PDF render işlemi tamamlandı.');
     
     return { filePath: outputPath };
   } catch (error) {
     console.error('PDF oluşturma hatası:', error);
-    throw new Error('PDF dosyası oluşturulamadı');
+    if (error instanceof Error) {
+      console.error('Hata detayı:', error.message);
+      console.error('Stack trace:', error.stack);
+    }
+    throw new Error(`PDF dosyası oluşturulamadı: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
@@ -36,10 +47,17 @@ export const streamPDF = async (
   component: AnyReactElement
 ): Promise<NodeJS.ReadableStream> => {
   try {
-    return await renderToStream(component);
+    console.log('PDF stream oluşturuluyor...');
+    const stream = await renderToStream(component);
+    console.log('PDF stream oluşturuldu.');
+    return stream;
   } catch (error) {
     console.error('PDF stream oluşturma hatası:', error);
-    throw new Error('PDF stream oluşturulamadı');
+    if (error instanceof Error) {
+      console.error('Hata detayı:', error.message);
+      console.error('Stack trace:', error.stack);
+    }
+    throw new Error(`PDF stream oluşturulamadı: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
@@ -48,15 +66,37 @@ export const bufferPDF = async (
   component: AnyReactElement
 ): Promise<Buffer> => {
   try {
+    console.log('PDF buffer için stream oluşturuluyor...');
     const stream = await renderToStream(component);
+    console.log('Stream oluşturuldu, buffer toplanıyor...');
+    
     return new Promise<Buffer>((resolve, reject) => {
       const chunks: Buffer[] = [];
-      stream.on('data', (chunk) => chunks.push(chunk));
-      stream.on('end', () => resolve(Buffer.concat(chunks)));
-      stream.on('error', reject);
+      let size = 0;
+      
+      stream.on('data', (chunk) => {
+        chunks.push(chunk);
+        size += chunk.length;
+        console.log(`Chunk alındı: ${chunk.length} bytes (Toplam: ${size} bytes)`);
+      });
+      
+      stream.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        console.log(`PDF buffer oluşturuldu. Toplam boyut: ${buffer.length} bytes`);
+        resolve(buffer);
+      });
+      
+      stream.on('error', (err) => {
+        console.error('Stream hatası:', err);
+        reject(err);
+      });
     });
   } catch (error) {
     console.error('PDF buffer oluşturma hatası:', error);
-    throw new Error('PDF buffer oluşturulamadı');
+    if (error instanceof Error) {
+      console.error('Hata detayı:', error.message);
+      console.error('Stack trace:', error.stack);
+    }
+    throw new Error(`PDF buffer oluşturulamadı: ${error instanceof Error ? error.message : String(error)}`);
   }
 }; 

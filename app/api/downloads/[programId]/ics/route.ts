@@ -3,12 +3,39 @@ import { generateRandomProgram } from "@/lib/dummy-data";
 import { headers } from "next/headers";
 import { createEvents, EventAttributes } from "ics";
 import { parseISO, addMinutes } from "date-fns";
+import { programCache } from "../../../program/[programId]/route";
 
 // Programı getiren fonksiyon (gerçek uygulamada API veya veritabanından)
 const getProgramData = async (programId: string) => {
-  // Bu örnekte dummy veri kullanıyoruz
-  // Gerçek uygulamada veritabanından veya API'den programı almak gerekir
-  return generateRandomProgram(programId);
+  // Önce önbellekte program var mı kontrol et
+  if (programCache[programId]) {
+    console.log(`Program ${programId} önbellekten alındı (ICS)`);
+    return programCache[programId];
+  }
+
+  // Önbellekte yoksa API'den getirmeyi dene
+  try {
+    // Program oluşturma API'sine istek göndererek var olan programı alma
+    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/program/${programId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      // Eğer program bulunamazsa, dummy veri kullan
+      console.log(`Program ID ${programId} bulunamadı, dummy veri kullanılıyor...`);
+      return generateRandomProgram(programId);
+    }
+    
+    const data = await response.json();
+    return data.program;
+  } catch (error) {
+    console.error('Program verisi alınırken hata:', error);
+    // Hata durumunda dummy veri kullan
+    return generateRandomProgram(programId);
+  }
 };
 
 // String tarihini Date nesnesine dönüştürme

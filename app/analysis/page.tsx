@@ -1,4 +1,4 @@
-import AnalysisForm from "@/components/forms/analysis-form";
+import { AnalysisForm } from "@/components/forms/analysis-form";
 
 export const metadata = {
   title: "StudyMap | Analiz Formu",

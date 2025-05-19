@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { generateRandomProgram } from "@/lib/dummy-data";
 import puppeteer from 'puppeteer-core';
+import { programCache } from "../../../program/[programId]/route";
 
 // Node.js Runtime kullanacağımızı belirt
 export const runtime = 'nodejs';
@@ -9,245 +10,551 @@ export const dynamic = 'force-dynamic'; // Her istekte yeniden oluşturmak için
 
 // Programı getiren fonksiyon (gerçek uygulamada API veya veritabanından)
 const getProgramData = async (programId: string) => {
-  // Bu örnekte dummy veri kullanıyoruz
-  // Gerçek uygulamada veritabanından veya API'den programı almak gerekir
-  return generateRandomProgram(programId);
-};
+  // Önce önbellekte program var mı kontrol et
+  if (programCache[programId]) {
+    console.log(`Program ${programId} önbellekten alındı (PDF)`);
+    return programCache[programId];
+  }
 
-// Programı HTML formatına dönüştür
-const generateProgramHtml = (program: any) => {
-  // Program haftalık verilerini HTML'e çevir
-  let weeklyContent = '';
-  
-  program.weeks.forEach((week: any) => {
-    weeklyContent += `
-      <div class="week">
-        <h3>Hafta ${week.weekNumber} (${week.startDate} - ${week.endDate})</h3>
-        
-        <div class="days">
-    `;
-    
-    week.days.forEach((day: any) => {
-      weeklyContent += `
-        <div class="day">
-          <h4>${day.dayName} - ${day.date}</h4>
-          
-          ${day.subjects.length > 0 
-            ? `<ul class="subjects">
-                ${day.subjects.map((subject: any) => `
-                  <li>
-                    <strong>${subject.name}</strong> (${subject.duration} dk) - 
-                    ${subject.topics.join(', ')}
-                  </li>
-                `).join('')}
-              </ul>`
-            : '<p class="no-subjects">Bu gün için planlanmış çalışma yok.</p>'
-          }
-        </div>
-      `;
+  // Önbellekte yoksa API'den getirmeyi dene
+  try {
+    // Program oluşturma API'sine istek göndererek var olan programı alma
+    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/program/${programId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
     
-    weeklyContent += `
+    if (!response.ok) {
+      // Eğer program bulunamazsa, dummy veri kullan
+      console.log(`Program ID ${programId} bulunamadı, dummy veri kullanılıyor...`);
+      return generateRandomProgram(programId);
+    }
+    
+    const data = await response.json();
+    return data.program;
+  } catch (error) {
+    console.error('Program verisi alınırken hata:', error);
+    // Hata durumunda dummy veri kullan
+    return generateRandomProgram(programId);
+  }
+};
+
+// Programı HTML formatına dönüştür - Günlük sayfa yapısı
+const generateProgramHtml = (program: any) => {
+  // Tüm günleri düz bir diziye dönüştür
+  const allDays = program.weeks.flatMap((week: any) => week.days);
+  
+  // Sınav tarihini Date nesnesine çevir
+  const examDateObj = new Date(program.examDate);
+  
+  // Sadece sınav tarihinden önceki günleri filtrele
+  const daysUntilExam = allDays.filter((day: any) => {
+    const dayDate = new Date(day.date);
+    return dayDate <= examDateObj;
+  });
+  
+  // Gün sayısını hesapla
+  const daysCount = daysUntilExam.length;
+  
+  // Her gün için HTML içeriği oluştur
+  let pagesHTML = '';
+  
+  daysUntilExam.forEach((day: any, index: number) => {
+    // Bu güne kadar geçen gün sayısı (program ilerlemesi)
+    const progress = ((index + 1) / daysCount) * 100;
+    
+    // Sınava kalan gün sayısı
+    const daysLeft = daysCount - index - 1;
+    
+    // Tarih formatlama
+    const date = new Date(day.date);
+    const formattedDate = new Intl.DateTimeFormat('tr-TR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }).format(date);
+    
+    // API'de kullanmak için ISO formatında tarih (YYYY-MM-DD)
+    const isoDate = day.date;
+    
+    // Günlük program sayfası URL'i
+    const dailyUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/program/day/${program.id}/${isoDate}`;
+    
+    // Dersleri HTML formatına dönüştür
+    let subjectsHTML = '';
+    
+    if (day.subjects.length > 0) {
+      day.subjects.forEach((subject: any) => {
+        const topics = subject.topics.join(', ');
+        
+        // Renk kodu oluştur (basit hash)
+        const hash = subject.name.split('').reduce((acc: number, char: string) => char.charCodeAt(0) + acc, 0);
+        const colors = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40"];
+        const color = colors[hash % colors.length];
+        
+        subjectsHTML += `
+          <div class="task-item">
+            <div class="checkbox"></div>
+            <div class="task-content">
+              <div class="task-header">
+                <div class="subject-icon" style="background-color: ${color};">
+                  ${subject.name.charAt(0).toUpperCase()}
+                </div>
+                <div class="task-name">${subject.name}</div>
+              </div>
+              <div class="task-topics">Konular: ${topics}</div>
+              <div class="task-duration">Süre: ${subject.duration} dakika</div>
+            </div>
+          </div>
+        `;
+      });
+    } else {
+      subjectsHTML = `<div class="no-tasks">Bu gün için planlanmış çalışma bulunmamaktadır.</div>`;
+    }
+    
+    // Sayfa HTML'i
+    pagesHTML += `
+      <div class="page">
+        <div class="header">
+          <h1>${program.title}</h1>
+          <h2>${day.dayName}, ${formattedDate}</h2>
+          <div class="countdown">Sınava Kalan Süre: ${daysLeft} Gün</div>
+          
+          <div class="progress-container">
+            <div class="progress-bar" style="width: ${progress}%"></div>
+          </div>
+          
+          <div class="daily-link">
+            <a href="${dailyUrl}" target="_blank" class="program-link">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+              Günlük Programı İnteraktif Görüntüle
+            </a>
+          </div>
+          
+          <div class="info-box">
+            <div class="info-item">
+              <div class="info-label">Sınav Türü:</div>
+              <div class="info-value">${program.examType}</div>
+            </div>
+            
+            <div class="info-item">
+              <div class="info-label">Sınav Tarihi:</div>
+              <div class="info-value">${new Intl.DateTimeFormat('tr-TR', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+              }).format(new Date(program.examDate))}</div>
+            </div>
+            
+            <div class="info-item">
+              <div class="info-label">İlerleme:</div>
+              <div class="info-value">%${Math.round(progress)}</div>
+            </div>
+            
+            <div class="info-item">
+              <div class="info-label">Sayfa:</div>
+              <div class="info-value">${index + 1} / ${daysCount}</div>
+            </div>
+          </div>
         </div>
+        
+        <div class="program-container">
+          <h3 class="program-title">Günün Çalışma Programı</h3>
+          ${subjectsHTML}
+        </div>
+        
+        <div class="notes-section">
+          <h3 class="notes-title">Notlar</h3>
+          <div class="notes-content"></div>
+        </div>
+    
+        <div class="footer">
+          © ${new Date().getFullYear()} StudyMap. Bu program ${program.email} için oluşturulmuştur.
+        </div>
+        
+        <div class="page-number">${index + 1} / ${daysCount}</div>
       </div>
     `;
   });
   
-  // Notlar bölümünü ekle
-  const notesContent = program.notes && program.notes.length > 0
-    ? `
-      <div class="notes">
-        <h2>Notlar</h2>
-        <ul>
-          ${program.notes.map((note: string) => `<li>${note}</li>`).join('')}
-        </ul>
-      </div>
-    `
-    : '';
-  
-  // HTML şablonu
+  // Ana HTML şablonu
   return `
     <!DOCTYPE html>
     <html lang="tr">
     <head>
       <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>${program.title}</title>
       <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
         body {
-          font-family: Arial, sans-serif;
-          line-height: 1.6;
-          color: #333;
+          font-family: 'Inter', sans-serif;
           margin: 0;
-          padding: 20px;
+          padding: 0;
+          background-color: #f5f5f5;
+          color: #333;
         }
-        .container {
-          max-width: 100%;
-          margin: 0 auto;
+        
+        .page {
+          width: 210mm;
+          height: 297mm;
+          padding: 20mm;
+          margin: 10mm auto;
+          background-color: white;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+          position: relative;
+          page-break-after: always;
+          box-sizing: border-box;
         }
-        .header {
+        
+        h1 {
+          font-size: 24px;
+          color: #7856FF;
           text-align: center;
-          margin-bottom: 30px;
-          padding-bottom: 10px;
-          border-bottom: 1px solid #ddd;
+          margin-bottom: 8px;
+          font-weight: 700;
         }
-        .title {
-          color: #7c3aed;
-          margin-bottom: 5px;
-        }
-        .subtitle {
-          color: #4b5563;
-          font-size: 16px;
-          margin: 5px 0;
-        }
-        .section {
-          margin-bottom: 20px;
-          padding-bottom: 10px;
-          border-bottom: 1px solid #eee;
-        }
+        
         h2 {
-          color: #7c3aed;
-          border-bottom: 1px solid #ddd;
-          padding-bottom: 5px;
+          font-size: 18px;
+          color: #3F3D56;
+          text-align: center;
+          margin-bottom: 6px;
+          font-weight: 500;
         }
+        
         h3 {
-          color: #7c3aed;
-          margin-top: 20px;
+          font-size: 16px;
+          color: #7856FF;
+          margin-bottom: 15px;
+          font-weight: 600;
         }
-        h4 {
-          color: #4b5563;
-          margin-bottom: 10px;
+        
+        .countdown {
+          font-size: 16px;
+          color: #FF6384;
+          text-align: center;
+          margin-bottom: 12px;
+          font-weight: bold;
         }
-        .days {
-          margin-left: 20px;
-        }
-        .day {
+        
+        .daily-link {
+          text-align: center;
           margin-bottom: 15px;
         }
-        .subjects {
+        
+        .program-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px 16px;
+          background-color: #7856FF;
+          color: white;
+          text-decoration: none;
+          border-radius: 6px;
+          font-weight: 500;
+          font-size: 14px;
+          transition: background-color 0.2s ease;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .program-link svg {
+          margin-right: 8px;
+        }
+        
+        .program-link:hover {
+          background-color: #6545DB;
+        }
+        
+        .progress-container {
+          height: 8px;
+          background-color: #E6E1FF;
+          border-radius: 4px;
           margin-top: 5px;
-          padding-left: 20px;
+          margin-bottom: 15px;
+          overflow: hidden;
         }
-        .subjects li {
-          margin-bottom: 5px;
+        
+        .progress-bar {
+          height: 8px;
+          background-color: #7856FF;
+          border-radius: 4px;
+          transition: width 0.3s ease;
         }
-        .no-subjects {
-          color: #6b7280;
-          font-style: italic;
-          margin-left: 20px;
-        }
-        .notes {
-          background-color: #f9fafb;
-          padding: 15px;
-          border-radius: 5px;
-          margin-top: 30px;
-        }
-        .notes h2 {
-          margin-top: 0;
-        }
-        .notes ul {
-          padding-left: 20px;
-        }
-        .footer {
-          text-align: center;
-          font-size: 12px;
-          color: #6b7280;
-          margin-top: 50px;
-          padding-top: 10px;
-          border-top: 1px solid #ddd;
-        }
-        .student-info, .program-summary {
+        
+        .info-box {
+          background-color: #F5F5F5;
+          padding: 12px;
+          margin-top: 10px;
           margin-bottom: 20px;
+          border-radius: 8px;
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: space-between;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
-        .student-info p, .program-summary p {
-          margin: 5px 0;
+        
+        .info-item {
+          width: 48%;
+          margin-bottom: 8px;
+        }
+        
+        .info-label {
+          font-size: 12px;
+          color: #666666;
+          margin-bottom: 2px;
+        }
+        
+        .info-value {
+          font-size: 14px;
+          font-weight: 600;
+          color: #333333;
+        }
+        
+        .program-container {
+          margin: 25px 0;
+          border: 1px solid #E6E1FF;
+          border-radius: 10px;
+          padding: 20px;
+          background-color: #FAFAFA;
+          box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+        }
+        
+        .program-title {
+          text-align: center;
+          margin-bottom: 20px;
+          color: #7856FF;
+          position: relative;
+        }
+        
+        .program-title:after {
+          content: '';
+          position: absolute;
+          bottom: -8px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 50px;
+          height: 3px;
+          background-color: #7856FF;
+          border-radius: 2px;
+        }
+        
+        .task-item {
+          display: flex;
+          margin-bottom: 16px;
+          padding: 14px;
+          background-color: white;
+          border-radius: 8px;
+          border-left: 4px solid #7856FF;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .task-item:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .checkbox {
+          width: 20px;
+          height: 20px;
+          border: 2px solid #7856FF;
+          border-radius: 4px;
+          margin-right: 12px;
+          margin-top: 2px;
+          position: relative;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+        }
+        
+        .checkbox:hover {
+          background-color: rgba(120, 86, 255, 0.1);
+        }
+        
+        .task-content {
+          flex: 1;
+        }
+        
+        .task-header {
+          display: flex;
+          align-items: center;
+          margin-bottom: 6px;
+        }
+        
+        .subject-icon {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-right: 10px;
+          color: white;
+          font-weight: bold;
+          font-size: 14px;
+        }
+        
+        .task-name {
+          font-size: 16px;
+          font-weight: 600;
+          color: #3F3D56;
+        }
+        
+        .task-topics {
+          font-size: 13px;
+          color: #666666;
+          margin-bottom: 4px;
+          padding-left: 38px;
+        }
+        
+        .task-duration {
+          font-size: 12px;
+          color: #7856FF;
+          font-weight: 500;
+          padding-left: 38px;
+        }
+        
+        .no-tasks {
+          font-size: 15px;
+          color: #666666;
+          font-style: italic;
+          text-align: center;
+          padding: 30px;
+        }
+        
+        .notes-section {
+          margin-top: 25px;
+          padding: 16px;
+          background-color: #F9F9F9;
+          border-radius: 10px;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .notes-title {
+          margin-bottom: 12px;
+          color: #3F3D56;
+          position: relative;
+        }
+        
+        .notes-title:after {
+          content: '';
+          position: absolute;
+          bottom: -6px;
+          left: 0;
+          width: 40px;
+          height: 2px;
+          background-color: #7856FF;
+          border-radius: 1px;
+        }
+        
+        .notes-content {
+          min-height: 120px;
+          border: 1px dashed #CCCCCC;
+          border-radius: 6px;
+          padding: 12px;
+          background-color: white;
+        }
+        
+        .footer {
+          position: absolute;
+          bottom: 20mm;
+          left: 20mm;
+          right: 20mm;
+          font-size: 11px;
+          text-align: center;
+          color: #999999;
+          border-top: 1px solid #e0e0e0;
+          padding-top: 10px;
+        }
+        
+        .page-number {
+          position: absolute;
+          bottom: 20mm;
+          right: 20mm;
+          font-size: 11px;
+          color: #777777;
+          font-weight: 500;
+        }
+        
+        @media print {
+          body {
+            background-color: white;
+          }
+          
+          .page {
+            margin: 0;
+            box-shadow: none;
+          }
+          
+          .page:not(:last-child) {
+            page-break-after: always;
+          }
         }
       </style>
     </head>
     <body>
-      <div class="container">
-        <div class="header">
-          <h1 class="title">${program.title}</h1>
-          <p class="subtitle">${program.examType} Sınavı için Çalışma Programı</p>
-          <p class="subtitle">Hazırlanma Tarihi: ${program.createdAt}</p>
-          <p class="subtitle">Sınav Tarihi: ${program.examDate}</p>
-        </div>
-        
-        <div class="section student-info">
-          <h2>Öğrenci Bilgileri</h2>
-          <p><strong>İsim:</strong> ${program.studentName || 'Belirtilmedi'}</p>
-          <p><strong>E-posta:</strong> ${program.email}</p>
-        </div>
-        
-        <div class="section program-summary">
-          <h2>Program Özeti</h2>
-          <p><strong>Toplam Hafta:</strong> ${program.totalWeeks}</p>
-          <p><strong>Sınav Türü:</strong> ${program.examType}</p>
-        </div>
-        
-        <div class="section program-content">
-          <h2>Program İçeriği</h2>
-          ${weeklyContent}
-        </div>
-        
-        ${notesContent}
-        
-        <div class="footer">
-          <p>${program.title} - StudyMap.app tarafından oluşturulmuştur.</p>
-        </div>
-      </div>
+      ${pagesHTML}
     </body>
     </html>
   `;
 };
 
 // Chrome Executable Path - Chrome binarylerinin yolu
-// Vercel gibi sunucularda Chrome AWS Lambda Layer üzerinden erişilebilir
-// https://github.com/alixaxel/chrome-aws-lambda/blob/master/source/index.js 
-// yolunu referans alabilirsiniz
 async function getBrowserInstance() {
-  // Vercel benzeri ortamlar için 
-  if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
-    // AWS Lambda için Chrome bulunuyor olabilir
+  // Mac OS için Chrome yolu
+  const isMacOS = process.platform === 'darwin';
+  if (isMacOS) {
+    const possiblePaths = [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium'
+    ];
+    
+    console.log("MacOS için Chrome yolu kullanılacak");
+    
     return puppeteer.launch({
-      args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox', 
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process'
-      ],
-      executablePath: "/opt/chrome/chrome",
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
       headless: true,
+      executablePath: process.env.CHROME_PATH || possiblePaths[0]
     });
   }
 
-  // Localhost geliştirme ortamları için (Chrome yolu uygun şekilde belirtilmeli)
-  // Linux için örnek
+  // Diğer işletim sistemleri için (Linux, Windows)
+  console.log("Varsayılan Chrome yolu kullanılacak");
   return puppeteer.launch({
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', 
+    executablePath: process.env.CHROME_PATH || 
+      (process.platform === 'win32' 
+        ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' 
+        : '/usr/bin/google-chrome'),
     headless: true,
   });
 }
 
-// HEAD isteklerini desteklemek için (client tarafında durum kontrolü için)
+// HEAD isteği için yanıt (özellikle download için kullanılır)
 export async function HEAD(
   request: Request,
-  { params }: { params: Promise<{ programId: string }> | { programId: string } }
+  { params: paramsPromise }: { params: { programId: string } }
 ) {
   return new Response(null, { status: 200 });
 }
 
+// GET isteği için yanıt
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ programId: string }> | { programId: string } }
+  { params: paramsPromise }: { params: { programId: string } }
 ) {
   try {
-    // params nesnesini await ile çöz (Next.js 14 ile uyumlu)
-    const resolvedParams = 'then' in params ? await params : params;
-    const { programId } = resolvedParams;
+    // Params objesinin kendisini bekle
+    const params = await paramsPromise;
+    const programId = params.programId;
     
     if (!programId) {
       return new Response("Program ID eksik veya geçersiz", { 
@@ -257,6 +564,8 @@ export async function GET(
         }
       });
     }
+
+    console.log(`PDF oluşturma başladı: ${programId}`);
 
     // Program verisini getir
     const program = await getProgramData(programId);
@@ -269,6 +578,8 @@ export async function GET(
         }
       });
     }
+    
+    console.log(`Program verisi alındı. PDF oluşturuluyor...`);
 
     try {
       // Program HTML'ini oluştur
@@ -280,6 +591,13 @@ export async function GET(
         browser = await getBrowserInstance();
         const page = await browser.newPage();
         
+        // Viewport'u A4 boyutuna ayarla
+        await page.setViewport({
+          width: 794, // A4 genişliği (px)
+          height: 1123, // A4 yüksekliği (px)
+          deviceScaleFactor: 1.5
+        });
+        
         // HTML içeriğini sayfaya yükle
         await page.setContent(htmlContent, { 
           waitUntil: 'networkidle0' 
@@ -288,9 +606,11 @@ export async function GET(
         // PDF'i oluştur
         const pdfBuffer = await page.pdf({
           format: 'A4',
-          margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' },
-          printBackground: true
+          printBackground: true,
+          margin: { top: '0', right: '0', bottom: '0', left: '0' }
         });
+        
+        console.log(`PDF oluşturuldu. Boyut: ${pdfBuffer.length} bytes`);
         
         // PDF'i binary olarak döndür
         return new Response(pdfBuffer, {
@@ -305,6 +625,7 @@ export async function GET(
       } finally {
         if (browser) {
           await browser.close();
+          console.log('Browser kapatıldı');
         }
       }
     } catch (pdfError) {

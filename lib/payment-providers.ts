@@ -25,8 +25,9 @@ export interface PaymentDetails {
 
 // Ülke koduna göre ödeme sağlayıcısını belirle
 export const getPaymentProvider = (countryCode: string): 'iyzico' | 'stripe' => {
-  // Türkiye için İyzico kullan, diğer ülkeler için Stripe
-  return countryCode === 'TR' ? 'iyzico' : 'stripe';
+  // Geliştirme ortamında her zaman Stripe kullan
+  return 'stripe';
+  // Gerçek ortamda: return countryCode === 'TR' ? 'iyzico' : 'stripe';
 };
 
 // İyzico ödeme başlatma fonksiyonu
